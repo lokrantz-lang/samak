@@ -1,0 +1,919 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#F3EFE6">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Samåk">
+<meta name="robots" content="noindex">
+<title>Samåk</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2317262B'/%3E%3Ccircle cx='46' cy='42' r='7' fill='%23E4622A'/%3E%3Ctext x='10' y='42' font-family='Arial' font-weight='800' font-size='30' fill='%23fff'%3Es%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#F3EFE6;--card:#FFFDF8;--ink:#17262B;--ink2:#4A585D;--ink3:#8A9599;--line:#E4DED1;--line2:#EFEADF;
+  --acc:#E4622A;--accbg:#FBE5D9;--ok:#2B7553;--okbg:#E1EFE6;--warn:#A9780A;--warnbg:#FAEFD2;--bad:#BF402A;--badbg:#F8E1DA;
+  --r:18px;--sh:0 1px 0 rgba(23,38,43,.04),0 8px 24px -14px rgba(23,38,43,.18);
+  --safe-b:env(safe-area-inset-bottom,0px);--safe-t:env(safe-area-inset-top,0px);
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.45 Figtree,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer;background:none;border:0;padding:0}
+h1,h2,h3,.disp{font-family:"Bricolage Grotesque",Figtree,sans-serif;letter-spacing:-.01em;margin:0}
+.wrap{max-width:820px;margin:0 auto;padding:calc(10px + var(--safe-t)) 16px calc(96px + var(--safe-b))}
+.top{display:flex;align-items:center;gap:10px;padding:6px 0 14px}
+.brand{font:800 26px "Bricolage Grotesque";letter-spacing:-.03em;display:flex;align-items:center;gap:6px}
+.brand i{width:10px;height:10px;border-radius:50%;background:var(--acc);display:inline-block;margin-top:9px}
+.grp{margin-left:auto;display:flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:7px 12px;font-weight:600;font-size:14px;max-width:52vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.me{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;font-weight:700;color:#fff;flex:none}
+.banner{display:flex;gap:12px;align-items:flex-start;border-radius:var(--r);padding:12px 14px;margin:0 0 14px;font-size:14px}
+.banner b{display:block;font-size:15px}
+.banner.info{background:#E7EEF0;color:#23414A}
+.banner.warn{background:var(--warnbg);color:#6B4D05}
+.banner.ok{background:var(--okbg);color:#1D5139}
+.banner.bad{background:var(--badbg);color:#7A2616}
+.weekhead{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin:4px 0 14px}
+.weekhead h1{font-size:34px;line-height:1;font-weight:800}
+.weekhead .sub{color:var(--ink2);margin-top:6px}
+.wnav{display:flex;background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden;flex:none}
+.wnav button{padding:10px 13px;font-weight:600}
+.wnav button+button{border-left:1px solid var(--line)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--sh)}
+.mine{padding:14px;margin-bottom:18px}
+.mine .hd{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.mine .hd .t{font-weight:700}
+.mine .hd .s{color:var(--ink3);font-size:13px}
+.mgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(86px,1fr));gap:6px}
+.mcell{border:1px solid var(--line);border-radius:12px;padding:7px 6px;text-align:center;font-size:12px;background:#fff;min-height:54px;display:flex;flex-direction:column;gap:3px;align-items:center;justify-content:center}
+.mcell small{color:var(--ink3);font-size:11px}
+.mcell.m-drive,.mcell.m-driver{background:var(--okbg);border-color:#BBDCC8}
+.mcell.m-need{background:var(--accbg);border-color:#F2C3AA}
+.mcell.m-own{background:#EEF0F1}
+.mcell.m-no{opacity:.55;text-decoration:line-through}
+.mcell.m-unk{border-style:dashed}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;border-radius:12px;padding:10px 14px;font-weight:600;border:1px solid transparent;white-space:nowrap}
+.btn.pri{background:var(--ink);color:#fff}
+.btn.acc{background:var(--acc);color:#fff}
+.btn.ghost{background:var(--card);border-color:var(--line)}
+.btn.soft{background:var(--line2)}
+.btn.danger{background:var(--bad);color:#fff}
+.btn.sm{padding:6px 10px;font-size:13px;border-radius:10px}
+.btn.block{width:100%}
+.btn[disabled]{opacity:.45;cursor:default}
+.link{color:var(--acc);font-weight:600}
+.sec{display:flex;align-items:center;justify-content:space-between;margin:22px 0 10px}
+.sec h2{font-size:19px;font-weight:700}
+.sess{padding:0;margin-bottom:14px;overflow:hidden}
+.sess.cancel{opacity:.6}
+.shead{display:flex;gap:12px;padding:14px 14px 12px;align-items:flex-start}
+.date{width:52px;flex:none;border-radius:14px;background:var(--line2);text-align:center;padding:6px 0 5px}
+.date b{display:block;font:800 24px/1 "Bricolage Grotesque"}
+.date span{font-size:11px;font-weight:700;letter-spacing:.06em;color:var(--ink2)}
+.shead h3{font-size:17px;font-weight:700;line-height:1.2}
+.shead .meta{color:var(--ink2);font-size:13.5px;margin-top:3px}
+.shead .meta b{color:var(--ink);font-weight:600}
+.shead .info{font-size:13px;color:var(--ink2);background:var(--line2);border-radius:8px;padding:4px 8px;margin-top:6px;display:inline-block}
+.tag{display:inline-block;font-size:11.5px;font-weight:700;border-radius:6px;padding:2px 7px;margin-left:4px;vertical-align:2px}
+.tag.c{background:var(--badbg);color:var(--bad)}
+.tag.m{background:var(--ink);color:#fff}
+.tag.p{background:var(--warnbg);color:var(--warn)}
+.dots{margin-left:auto;padding:6px;border-radius:10px;color:var(--ink2)}
+.trips{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid var(--line)}
+.trip{text-align:left;padding:12px 12px 13px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.trip+.trip{border-left:1px solid var(--line)}
+.trip:hover{background:#FCFAF4}
+.th{display:flex;justify-content:space-between;font-size:11.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--ink2)}
+.th span:last-child{text-transform:none;letter-spacing:0;font-weight:600}
+.drv{border-radius:12px;padding:9px 10px;font-size:13.5px;line-height:1.3}
+.drv b{display:block;font-size:14px}
+.st-ok .drv{background:var(--okbg);color:#1D5139}
+.st-short .drv{background:var(--warnbg);color:#6B4D05}
+.st-prop .drv{background:var(--warnbg);color:#6B4D05;border:1px dashed #E1C374}
+.st-open .drv{background:var(--accbg);color:#7A3413;border:1px dashed #EDB194}
+.st-none .drv,.st-wait .drv{background:var(--line2);color:var(--ink2)}
+.need{font-size:12.5px;color:var(--ink2)}
+.kids{display:flex;flex-wrap:wrap;gap:4px}
+.kid{font-size:12px;font-weight:600;border-radius:999px;padding:2px 8px 2px 6px;display:inline-flex;align-items:center;gap:5px;background:#fff;border:1px solid var(--line)}
+.kid i{width:8px;height:8px;border-radius:50%;display:inline-block;flex:none}
+.kid.m-need i{background:var(--acc)}
+.kid.m-drive i,.kid.m-driver i{background:var(--ok)}
+.kid.m-own i{background:var(--ink3)}
+.kid.m-unk i{border:1.5px dashed var(--ink3);background:none}
+.kid.m-no{text-decoration:line-through;color:var(--ink3)}
+.kid.m-no i{background:var(--line)}
+.kid.m-driver{background:var(--okbg);border-color:#BBDCC8}
+.empty{text-align:center;padding:34px 18px;color:var(--ink2)}
+.empty h3{color:var(--ink);font-size:18px;margin-bottom:6px}
+.tabs{position:fixed;left:0;right:0;bottom:0;z-index:20;background:rgba(255,253,248,.94);backdrop-filter:blur(10px);border-top:1px solid var(--line);padding:6px 8px calc(6px + var(--safe-b))}
+.tabs .in{max-width:820px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr)}
+.tab{display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 0;font-size:12px;font-weight:600;color:var(--ink3);position:relative}
+.tab.on{color:var(--ink)}
+.tab.on svg{color:var(--acc)}
+.badge{position:absolute;top:2px;left:calc(50% + 6px);background:var(--acc);color:#fff;font-size:10.5px;font-weight:700;border-radius:999px;padding:0 5px;min-width:17px;line-height:17px}
+#sheet,#dlg{position:fixed;inset:0;z-index:40}
+#dlg{z-index:60}
+.scrim{position:absolute;inset:0;background:rgba(18,28,31,.42);opacity:0;transition:opacity .2s}
+#sheet.open .scrim,#dlg .scrim{opacity:1}
+.panel{position:absolute;left:0;right:0;bottom:0;max-height:92vh;overflow:auto;background:var(--card);border-radius:22px 22px 0 0;padding:6px 18px calc(22px + var(--safe-b));transform:translateY(100%);transition:transform .24s cubic-bezier(.2,.8,.2,1);max-width:640px;margin:0 auto;overscroll-behavior:contain}
+#sheet.open .panel{transform:none}
+@media(min-width:700px){.panel{bottom:auto;top:50%;border-radius:22px;transform:translateY(-46%);opacity:0;transition:opacity .18s,transform .18s;max-height:86vh;padding-bottom:22px}#sheet.open .panel{transform:translateY(-50%);opacity:1}}
+.grab{width:40px;height:4px;background:var(--line);border-radius:4px;margin:6px auto 12px}
+.xbar{position:sticky;top:0;z-index:2;display:flex;justify-content:flex-end;height:0}
+.xbtn{width:36px;height:36px;border-radius:50%;background:var(--line2);display:grid;place-items:center;font-size:17px;font-weight:700;color:var(--ink2);margin-top:2px;margin-right:-6px}
+.xbtn:hover{background:var(--line)}
+.pbody h2{padding-right:40px}
+.st-maybe .drv{background:var(--warnbg);color:#6B4D05;border:1px dashed #E1C374}
+.kid.m-maybe i{background:#E1B43A}
+.mcell.m-maybe{background:var(--warnbg);border-color:#EED9A0}
+.seg button.on.v-maybe{background:#E1B43A;color:#3D2C02}
+.addr{font-size:12.5px;color:var(--ink2);width:100%;padding-left:2px}
+.days{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin:4px 0 10px}
+.days button{border:1px solid var(--line);background:#fff;border-radius:10px;padding:5px 0;font-size:12px;line-height:1.2}
+.days button b{display:block;font-size:14px}
+.days small{display:block;text-align:center;font-size:10.5px;color:var(--ink3)}
+.defrow{display:grid;grid-template-columns:70px 1fr;gap:8px;align-items:center;margin-bottom:6px;font-size:13.5px;font-weight:600}
+.defrow select{padding:7px 10px}
+form .only-shared{display:none}
+form.shared .only-shared{display:block}
+form.shared .not-shared{display:none}
+.std{font-size:10.5px;color:var(--ink3);font-weight:600}
+.lockbar{display:flex;align-items:center;gap:8px;padding:8px 14px;font-size:13px;border-top:1px solid var(--line)}
+.lockbar.on{background:#EEF0F1;color:var(--ink)}
+.lockbar.off{background:var(--warnbg);color:#6B4D05}
+.sugg{font-size:12.5px;font-weight:600;color:var(--ok)}
+.nudge{font-size:12.5px;color:var(--warn);margin-top:5px}
+.pbody h2{font-size:22px;font-weight:800;margin-bottom:4px}
+.pbody .lead{color:var(--ink2);margin:0 0 14px}
+.pbody h4{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink3);margin:18px 0 8px}
+.dbox{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(380px,90vw);background:var(--card);border-radius:18px;padding:18px}
+.dbox p{margin:0 0 16px;font-size:15.5px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.row.end{justify-content:flex-end}
+.row.between{justify-content:space-between}
+.grow{flex:1;min-width:0}
+.list{display:flex;flex-direction:column}
+.li{display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid var(--line2)}
+.li:last-child{border-bottom:0}
+.li .t{font-weight:600}
+.li .s{font-size:13px;color:var(--ink2)}
+.av{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;color:#fff;font-weight:700;font-size:13px;flex:none}
+.seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;background:var(--line2);border-radius:12px;padding:3px;gap:3px}
+.seg button{padding:8px 4px;border-radius:9px;font-size:13px;font-weight:600;color:var(--ink2);line-height:1.15}
+.seg button.on{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.seg button.on.v-drive{background:var(--ok);color:#fff}
+.seg button.on.v-need{background:var(--acc);color:#fff}
+.seg button.on.v-no{background:var(--ink);color:#fff}
+.fs{border:1px solid var(--line);border-radius:16px;padding:12px;margin-bottom:12px;background:#fff}
+.fs .ttl{font-weight:700}
+.fs .sub{font-size:13px;color:var(--ink2);margin-bottom:10px}
+.dirrow{display:grid;grid-template-columns:92px 1fr;gap:8px;align-items:center;margin-top:8px}
+.dirrow .lbl{font-size:13px;font-weight:600;line-height:1.2}
+.dirrow .lbl small{display:block;color:var(--ink3);font-weight:500}
+.step{display:inline-flex;align-items:center;gap:2px;background:var(--line2);border-radius:10px;padding:2px}
+.step button{width:30px;height:28px;border-radius:8px;font-weight:700}
+.step span{min-width:68px;text-align:center;font-size:13px;font-weight:600}
+label.f{display:block;margin-bottom:12px}
+label.f span{display:block;font-size:13px;font-weight:600;margin-bottom:5px;color:var(--ink2)}
+input[type=text],input[type=date],input[type=time],input[type=number],select,textarea{width:100%;border:1px solid var(--line);background:#fff;border-radius:12px;padding:10px 12px;outline:none}
+input:focus,select:focus,textarea:focus{border-color:var(--ink2)}
+textarea{min-height:120px;resize:vertical}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+.chk{display:flex;gap:10px;align-items:flex-start;padding:8px 0}
+.chk input{margin-top:3px;width:18px;height:18px;accent-color:var(--ink)}
+.box{padding:14px 16px;margin-bottom:14px}
+.box h3{font-size:17px;font-weight:700;margin-bottom:2px}
+.box .s{color:var(--ink2);font-size:13.5px}
+.stat{padding:14px 16px;margin-bottom:10px}
+.stat .top2{display:flex;align-items:center;gap:12px}
+.stat .num{font:800 30px/1 "Bricolage Grotesque";margin-left:auto;text-align:right}
+.stat .num small{display:block;font:600 11.5px Figtree;color:var(--ink3);letter-spacing:.03em}
+.bar{height:8px;background:var(--line2);border-radius:6px;margin:10px 0 8px;overflow:hidden}
+.bar i{display:block;height:100%;border-radius:6px}
+.par{display:flex;justify-content:space-between;font-size:13.5px;color:var(--ink2);padding:3px 0 3px 42px}
+.par b{color:var(--ink)}
+.bal{font-size:12.5px;color:var(--ink2);padding-left:42px;margin-top:2px}
+.chat{display:flex;flex-direction:column;gap:10px;padding-bottom:84px}
+.day{text-align:center;font-size:12px;color:var(--ink3);font-weight:600;margin:8px 0 2px}
+.msg{display:flex;gap:8px;align-items:flex-end;max-width:88%}
+.msg.mine{margin-left:auto;flex-direction:row-reverse}
+.bub{background:var(--card);border:1px solid var(--line);border-radius:16px 16px 16px 4px;padding:8px 12px}
+.msg.mine .bub{background:var(--ink);color:#fff;border-color:var(--ink);border-radius:16px 16px 4px 16px}
+.bub .who{font-size:12px;font-weight:700;color:var(--ink2);margin-bottom:2px}
+.msg.mine .bub .who{color:#C9D3D6}
+.bub .tm{font-size:11px;opacity:.6;margin-top:2px}
+.bub .del{font-size:11px;text-decoration:underline;opacity:.7;margin-left:8px}
+.bub.sys{background:var(--warnbg);border-color:#EED9A0}
+.compose{position:fixed;left:0;right:0;bottom:calc(62px + var(--safe-b));z-index:15;padding:8px 12px}
+.compose .in{max-width:820px;margin:0 auto;display:flex;gap:8px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:6px;box-shadow:var(--sh)}
+.compose input{border:0;padding:8px 10px;background:none}
+.toast{position:fixed;left:50%;bottom:calc(84px + var(--safe-b));transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 16px;border-radius:12px;font-size:14px;z-index:80;max-width:90vw;box-shadow:var(--sh)}
+.legend{display:grid;gap:10px}
+.legend .kid{font-size:13px}
+.code{font:700 22px/1 ui-monospace,Menlo,monospace;letter-spacing:.12em;background:var(--line2);border-radius:12px;padding:12px 14px;text-align:center}
+.tbl{width:100%;border-collapse:collapse;font-size:13.5px}
+.tbl td{padding:7px 4px;border-bottom:1px solid var(--line2);vertical-align:top}
+.muted{color:var(--ink3)}
+.hint{font-size:13px;color:var(--ink2)}
+.sp{height:10px}
+.spin{width:22px;height:22px;border:3px solid var(--line);border-top-color:var(--acc);border-radius:50%;animation:sp 0.8s linear infinite;margin:60px auto 12px}
+@keyframes sp{to{transform:rotate(360deg)}}
+.hero{padding:22px 18px;margin:8px 0 16px}
+.hero h1{font-size:30px;font-weight:800;line-height:1.05;margin-bottom:8px}
+@media(max-width:430px){
+  .weekhead h1{font-size:29px}
+  .trip{padding:11px 10px 12px}
+  .dirrow{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+<nav class="tabs" id="tabs" hidden></nav>
+<div id="sheet" hidden></div>
+<div id="dlg" hidden></div>
+<script>
+"use strict";
+/* ================= Konfiguration – fylls i vid installation ================= */
+const SUPABASE_URL = "__SUPABASE_URL__";
+const SUPABASE_KEY = "__SUPABASE_KEY__";
+
+/* ================= Hjälpfunktioner ================= */
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const DAYS=['söndag','måndag','tisdag','onsdag','torsdag','fredag','lördag'];
+const MONTHS=['januari','februari','mars','april','maj','juni','juli','augusti','september','oktober','november','december'];
+const MON3=['jan','feb','mar','apr','maj','jun','jul','aug','sep','okt','nov','dec'];
+const cap=s=>s?s[0].toUpperCase()+s.slice(1):s;
+const pad=n=>String(n).padStart(2,'0');
+const isoD=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+const pd=s=>{const[y,m,d]=String(s).split('-').map(Number);return new Date(y,m-1,d)};
+const at=(date,hm)=>{const d=pd(date);const[h,mi]=String(hm||'00:00').split(':').map(Number);d.setHours(h||0,mi||0,0,0);return d};
+const addDays=(d,n)=>{const x=new Date(d);x.setDate(x.getDate()+n);return x};
+const monday=d=>{const x=new Date(d.getFullYear(),d.getMonth(),d.getDate());x.setDate(x.getDate()-((x.getDay()+6)%7));return x};
+const isoWeek=d=>{const t=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));const day=t.getUTCDay()||7;t.setUTCDate(t.getUTCDate()+4-day);const y0=new Date(Date.UTC(t.getUTCFullYear(),0,1));return Math.ceil(((t-y0)/864e5+1)/7)};
+const fmtShort=s=>{const d=pd(s);return cap(DAYS[d.getDay()].slice(0,3))+' '+d.getDate()+' '+MON3[d.getMonth()]};
+const fmtLong=s=>{const d=pd(s);return cap(DAYS[d.getDay()])+' '+d.getDate()+' '+MONTHS[d.getMonth()]};
+const validHM=s=>/^\d{2}:\d{2}$/.test(s||'');
+const COLORS=['#E4622A','#2B7553','#3C6BB0','#8C4FB0','#B8860B','#C0457A','#1F8A8A','#6A6F2B','#9A5B3C','#4B5DCC'];
+const gen=n=>/[sxz]$/i.test(n)?n:n+'s';
+const lsGet=k=>{try{return localStorage.getItem('samak.'+k)}catch{return null}};
+const lsSet=(k,v)=>{try{localStorage.setItem('samak.'+k,v)}catch{}};
+const ICON={
+ car:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17h14M5 17a2 2 0 1 0 4 0M15 17a2 2 0 1 0 4 0M3 17v-5l2-5h14l2 5v5M3 12h18"/></svg>',
+ week:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
+ chat:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"/></svg>',
+ stat:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 20V11M12 20V4M19 20v-6"/></svg>',
+ grp:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c.6-3.4 3-5 6-5s5.4 1.6 6 5"/><path d="M16 4.5a3 3 0 0 1 0 6M18 14.5c1.7.6 2.7 2.4 3 5"/></svg>',
+ dots:'<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>',
+ down:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg>'
+};
+
+/* ================= Inloggning med länk ================= */
+function tokens(){try{return JSON.parse(lsGet('tokens')||'[]')}catch{return[]}}
+function saveTokens(a){lsSet('tokens',JSON.stringify(a))}
+function addToken(t,name){const a=tokens().filter(x=>x.t!==t);a.unshift({t,name:name||''});saveTokens(a);lsSet('cur',t)}
+function curToken(){const c=lsGet('cur');const a=tokens();return a.some(x=>x.t===c)?c:(a[0]?.t||null)}
+function readHashToken(){const m=location.hash.match(/^#(?:t=)?([a-f0-9]{40,80})$/i);if(m){addToken(m[1].toLowerCase());try{history.replaceState(null,'',location.pathname+location.search)}catch{location.hash=''}}}
+
+/* ================= API (Supabase RPC) ================= */
+const Api={
+  async call(fn,args){
+    const r=await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`,{method:'POST',headers:{'apikey':SUPABASE_KEY,...(SUPABASE_KEY.startsWith('eyJ')?{'Authorization':'Bearer '+SUPABASE_KEY}:{}),'Content-Type':'application/json'},body:JSON.stringify(args||{})});
+    const txt=await r.text();let j=null;try{j=txt?JSON.parse(txt):null}catch{}
+    if(!r.ok){const e=new Error((j&&j.message)||('HTTP '+r.status));e.code=(j&&j.message)||String(r.status);throw e}
+    return j;
+  }
+};
+const ERR={invalid_token:'Länken fungerar inte längre.',not_moderator:'Det kräver moderator.',not_your_family:'Du kan bara ändra för din egen familj.',locked:'Träningen är låst – lås upp först.',need_one_moderator:'Gruppen måste ha minst en moderator.',cannot_revoke_self:'Du kan inte spärra din egen länk.'};
+async function rpc(fn,args,{quiet}={}){
+  try{const r=await Api.call(fn,{p_token:S.token,...args});return r}
+  catch(e){
+    if(e.code==='invalid_token'){S.badToken=true;render()}
+    if(!quiet)toast(ERR[e.code]||('Kunde inte spara: '+e.message));
+    throw e;
+  }
+}
+async function act(fn,args,okMsg){try{await rpc(fn,args);if(okMsg)toast(okMsg);await refresh(true);return true}catch{await refresh(true);return false}}
+
+/* ================= Tillstånd ================= */
+const S={token:null,raw:null,rawStr:'',loading:true,netErr:false,badToken:false,
+  me:null,group:null,fam:{},sess:{},ans:{},drv:{},msgs:[],members:[],
+  view:'week',week:monday(new Date()),weekChosen:false,sheet:null,importRows:null,acting:null};
+async function refresh(force){
+  if(!S.token)return;
+  try{
+    const st=await Api.call('api_state',{p_token:S.token});
+    S.netErr=false;S.loading=false;S.badToken=false;
+    const str=JSON.stringify(st);
+    if(!force&&str===S.rawStr)return;
+    S.rawStr=str;load(st);render();renderSheet();
+  }catch(e){
+    S.loading=false;
+    if(e.code==='invalid_token')S.badToken=true;else S.netErr=true;
+    render();
+  }
+}
+function load(st){
+  S.me=st.me;S.group=st.group;
+  S.fam=Object.fromEntries(st.families.map(f=>[f.id,f]));
+  S.sess=Object.fromEntries(st.sessions.map(s=>[s.id,s]));
+  S.ans=Object.fromEntries(st.answers.map(a=>[a.sid+'__'+a.fid,a]));
+  S.drv={};for(const d of st.drivers)(S.drv[d.sid+'__'+d.dir]??=[]).push(d);
+  S.msgs=st.messages;S.members=st.members||[];
+  const a=tokens();const i=a.findIndex(x=>x.t===S.token);if(i>=0&&a[i].name!==S.group?.name){a[i].name=S.group?.name||'';saveTokens(a)}
+  if(!S.weekChosen){S.weekChosen=true;chooseWeek()}
+}
+const isMod=()=>S.me?.role==='moderator';
+const famList=all=>Object.values(S.fam).filter(f=>all||!f.archived).sort((a,b)=>(a.child||'').localeCompare(b.child||'','sv'));
+const famName=fid=>{const f=S.fam[fid];return f?gen(f.child||'?')+' familj':'Borttagen familj'};
+const childName=fid=>S.fam[fid]?.child||'?';
+const parentName=(fid,pid)=>S.fam[fid]?.parents?.find(p=>p.id===pid)?.name||'Okänd';
+const activeParents=fid=>(S.fam[fid]?.parents||[]).filter(p=>!p.archived);
+const famColor=fid=>COLORS[(S.fam[fid]?.color??0)%COLORS.length];
+const famSeats=fid=>Math.max(0,Number(S.fam[fid]?.seats??3));
+const canEditFam=fid=>isMod()||S.me?.family_id===fid;
+const myName=()=>parentName(S.me?.family_id,S.me?.parent_id);
+const sessList=()=>Object.values(S.sess).sort((a,b)=>(a.date+a.start).localeCompare(b.date+b.start));
+const weekSess=()=>{const a=isoD(S.week),b=isoD(addDays(S.week,7));return sessList().filter(s=>s.date>=a&&s.date<b)};
+const dropTime=s=>s.gather||s.start;
+const tripTime=(s,dir)=>dir==='to'?at(s.date,dropTime(s)):at(s.date,s.end);
+const isLocked=sid=>!!S.sess[sid]?.lock?.on;
+function chooseWeek(){const now=new Date();if(weekSess().some(s=>!s.cancelled&&at(s.date,s.end)>now))return;const n=sessList().find(s=>!s.cancelled&&at(s.date,s.end)>now);if(n)S.week=monday(pd(n.date))}
+function actingFid(){if(isMod()&&S.acting&&S.fam[S.acting]&&!S.fam[S.acting].archived)return S.acting;return S.me?.family_id}
+
+/* ================= Logik: svar, resor, statistik ================= */
+const DEF_OPTS=[['','Inget standardsvar'],['no','Deltar ej'],['drive','Kan köra dit och hem'],['need','Behöver skjuts dit och hem'],['drive-need','Kan köra dit, behöver skjuts hem'],['need-drive','Behöver skjuts dit, kan köra hem']];
+function defAnswer(fid,date){
+  const code=S.fam[fid]?.defaults?.[String(pd(date).getDay())];if(!code)return null;
+  const m={no:{att:'no'},drive:{att:'yes',to:'drive',from:'drive'},need:{att:'yes',to:'need',from:'need'},'drive-need':{att:'yes',to:'drive',from:'need'},'need-drive':{att:'yes',to:'need',from:'drive'}}[code];
+  return m?{...m,prelim:false,isDefault:true}:null;
+}
+function effAnswer(sid,fid){return S.ans[sid+'__'+fid]||(S.sess[sid]?defAnswer(fid,S.sess[sid].date):null)}
+const drivers=(sid,dir)=>(S.drv[sid+'__'+dir]||[]).filter(d=>S.fam[d.fid]);
+function mode(sid,fid,dir){
+  const a=effAnswer(sid,fid);
+  if(a&&a.att==='no')return'no';
+  if(drivers(sid,dir).some(d=>d.fid===fid))return'driver';
+  return a?.[dir]||'unk';
+}
+function coverage(s,dir){
+  const fams=famList();const ds=drivers(s.id,dir);
+  const modes=fams.map(f=>({fid:f.id,m:mode(s.id,f.id,dir),prelim:!!effAnswer(s.id,f.id)?.prelim}));
+  const needers=modes.filter(x=>x.m==='need'),unk=modes.filter(x=>x.m==='unk'),can=modes.filter(x=>x.m==='drive');
+  const prelim=modes.filter(x=>x.prelim&&x.m!=='no');
+  const seats=ds.reduce((n,d)=>n+Math.max(0,Number(d.seats??3)),0);
+  let st;
+  if(ds.length&&seats>=needers.length)st='ok';
+  else if(ds.length)st='short';
+  else if(needers.length)st='open';
+  else if(unk.length)st='wait';
+  else st='none';
+  if((st==='ok'||st==='none')&&prelim.length)st='prelim';
+  return{st,ds,needers,unk,can,prelim,seats,modes};
+}
+const needsAction=st=>st==='open'||st==='short'||st==='prelim';
+const isOddWeek=date=>isoWeek(pd(date))%2===1;
+function custodian(fid,date){const f=S.fam[fid];if(!f?.shared?.on)return null;const pid=f.shared[isOddWeek(date)?'odd':'even']?.[String(pd(date).getDay())];return f.parents.some(p=>p.id===pid)?pid:null}
+function addressFor(fid,date){const f=S.fam[fid];if(!f)return'';const c=custodian(fid,date);return c?(f.parents.find(p=>p.id===c)?.address||''):(f.address||'')}
+function defaultDriverPid(fid,date){return custodian(fid,date)||(fid===S.me?.family_id?S.me.parent_id:null)||activeParents(fid)[0]?.id||null}
+function computeStats(){
+  const now=new Date();const fam={},par={};
+  for(const f of famList(true)){fam[f.id]={drives:(f.baseline_other||0),rides:0,base:0};fam[f.id].base+=f.baseline_other||0;
+    for(const p of f.parents){par[p.id]=p.baseline||0;fam[f.id].drives+=p.baseline||0;fam[f.id].base+=p.baseline||0}}
+  for(const key of Object.keys(S.drv)){
+    const[sid,dir]=key.split('__');const s=S.sess[sid];if(!s||s.cancelled||tripTime(s,dir)>now)continue;
+    const ds=drivers(sid,dir);if(!ds.length)continue;
+    for(const d of ds){if(!fam[d.fid])continue;fam[d.fid].drives++;if(d.pid)par[d.pid]=(par[d.pid]||0)+1}
+    for(const f of famList(true)){if(ds.some(d=>d.fid===f.id))continue;const a=effAnswer(sid,f.id);if(a&&a.att==='yes'&&a[dir]==='need')fam[f.id].rides++}
+  }
+  return{fam,par};
+}
+function bestSuggestion(sid,dir){
+  const ds=drivers(sid,dir);const can=famList().map(f=>f.id).filter(id=>mode(sid,id,dir)==='drive'&&!ds.some(d=>d.fid===id));
+  if(!can.length)return null;const st=computeStats().fam;
+  return can.sort((a,b)=>((st[a].drives-st[a].rides)-(st[b].drives-st[b].rides))||st[a].drives-st[b].drives)[0];
+}
+function lockText(s){const l=s.lock;if(!l)return'';const d=new Date(l.ts);const w=`${d.getDate()} ${MON3[d.getMonth()]} ${pad(d.getHours())}:${pad(d.getMinutes())}`;return l.on?`🔒 Låst av ${esc(l.name||'moderator')} ${w}`:`🔓 Upplåst av ${esc(l.name||'okänd')} ${w}`}
+function weekSummary(){
+  const lines=[`📋 ${S.group?.name||''} – vecka ${isoWeek(S.week)} är låst`];
+  for(const s of weekSess()){
+    const d=pd(s.date);
+    lines.push('',`${cap(DAYS[d.getDay()])} ${d.getDate()}/${d.getMonth()+1} · ${s.title}`);
+    if(s.cancelled){lines.push('❌ Inställd');continue}
+    for(const dir of['to','from']){
+      const c=coverage(s,dir);const kids=c.needers.map(x=>childName(x.fid));
+      let t;
+      if(c.ds.length)t=`${c.ds.map(x=>parentName(x.fid,x.pid)).join(' + ')} kör${kids.length?' (med '+kids.join(', ')+')':''}${c.st==='short'?' ⚠️ för få platser':''}`;
+      else if(kids.length)t=`❗ förare saknas (${kids.join(', ')})`;
+      else if(c.unk.length)t=`inga svar från ${c.unk.map(x=>childName(x.fid)).join(', ')}`;
+      else t='ingen skjuts behövs';
+      if(c.prelim.length)t+=` – preliminärt: ${c.prelim.map(x=>childName(x.fid)).join(', ')}`;
+      lines.push(`${dir==='to'?'→ Lämning':'← Hämtning'}: ${t}`);
+    }
+    const no=famList().filter(f=>mode(s.id,f.id,'to')==='no').map(f=>f.child);
+    if(no.length)lines.push(`Deltar ej: ${no.join(', ')}`);
+  }
+  return lines.join('\n');
+}
+
+/* ================= Rendering ================= */
+function render(){
+  const app=$('#app');const ae=document.activeElement;let keep=null;
+  if(ae&&ae.id&&app.contains(ae))keep={id:ae.id,v:ae.value,a:ae.selectionStart,b:ae.selectionEnd};
+  app.innerHTML=view();
+  if(keep){const el=document.getElementById(keep.id);if(el){el.value=keep.v;el.focus();try{el.setSelectionRange(keep.a,keep.b)}catch{}}}
+  renderTabs();
+  if(S.view==='chat'&&S._scroll){S._scroll=false;requestAnimationFrame(()=>window.scrollTo(0,document.body.scrollHeight))}
+}
+function renderTabs(){
+  const t=$('#tabs');if(!S.me||S.badToken){t.hidden=true;return}t.hidden=false;
+  const seen=Number(lsGet('seen.'+S.group?.id)||0);const n=S.msgs.filter(m=>new Date(m.ts).getTime()>seen&&m.mid!==S.me.member_id).length;
+  const tab=(v,ic,l,b)=>`<button class="tab ${S.view===v?'on':''}" data-act="view" data-v="${v}">${ICON[ic]}<span>${l}</span>${b?`<span class="badge">${b>9?'9+':b}</span>`:''}</button>`;
+  t.innerHTML=`<div class="in">${tab('week','week','Vecka')}${tab('chat','chat','Chatt',S.view==='chat'?0:n)}${tab('stats','stat','Statistik')}${tab('group','grp','Grupp')}</div>`;
+}
+function header(){
+  const fid=S.me?.family_id;
+  return`<div class="top"><div class="brand">samåk<i></i></div>${S.group?`<button class="grp" data-act="groups">${esc(S.group.name)} ${ICON.down}</button>`:''}
+    ${fid?`<div class="me" style="background:${famColor(fid)}" title="${esc(myName())}">${esc(myName()[0]||'?')}</div>`:''}</div>`;
+}
+function view(){
+  if(SUPABASE_URL.startsWith('__'))return header()+`<div class="card box"><h3>Inte installerad än</h3><p class="s">Fyll i SUPABASE_URL och SUPABASE_KEY överst i filen.</p></div>`;
+  if(!S.token)return header()+`<div class="card hero"><h1>Alla åt samma håll.</h1><p class="hint" style="font-size:15px">Samåk planerar skjutsen till lagets träningar.</p></div><div class="card box"><h3>Du behöver en inbjudningslänk</h3><p class="s">Be lagets moderator om din personliga länk och öppna den på den här enheten.</p></div>`;
+  if(S.badToken)return header()+`<div class="card box"><h3>Länken fungerar inte längre</h3><p class="s">Den kan ha spärrats eller bytts ut. Be moderatorn om en ny länk.</p>${tokens().length>1?'<div class="sp"></div><button class="btn ghost" data-act="groups">Välj en annan grupp</button>':''}<div class="sp"></div><button class="btn ghost" data-act="forget">Glöm länken på den här enheten</button></div>`;
+  if(S.loading)return header()+`<div class="spin"></div><p class="empty">Hämtar…</p>`;
+  if(!S.me)return header()+`<div class="banner bad"><div><b>Kan inte nå Samåk</b>Kontrollera nätet och försök igen.</div></div><button class="btn ghost" data-act="retry">Försök igen</button>`;
+  const net=S.netErr?`<div class="banner bad"><div><b>Ingen kontakt just nu</b>Det som visas kan vara inaktuellt.</div></div>`:'';
+  const body=S.view==='week'?viewWeek():S.view==='chat'?viewChat():S.view==='stats'?viewStats():viewGroup();
+  return header()+net+body;
+}
+
+function viewWeek(){
+  const w=S.week,end=addDays(w,6);
+  const range=w.getMonth()===end.getMonth()?`${w.getDate()}–${end.getDate()} ${MONTHS[end.getMonth()]}`:`${w.getDate()} ${MON3[w.getMonth()]} – ${end.getDate()} ${MON3[end.getMonth()]}`;
+  const list=weekSess();const act=list.filter(s=>!s.cancelled);const now=new Date();
+  let noDrv=0,wait=0,prel=0,total=0;
+  for(const s of act)for(const d of['to','from']){if(tripTime(s,d)<now)continue;total++;const st=coverage(s,d).st;if(st==='open'||st==='short')noDrv++;else if(st==='wait')wait++;else if(st==='prelim')prel++}
+  let h=`<div class="weekhead"><div><h1>Vecka ${isoWeek(w)}</h1><div class="sub">${range}</div></div>
+   <div class="wnav"><button data-act="wk" data-d="-1" aria-label="Föregående vecka">←</button><button data-act="wk" data-d="0">Idag</button><button data-act="wk" data-d="1" aria-label="Nästa vecka">→</button></div></div>`;
+  const rs=n=>n===1?'resa':'resor';
+  if(total){
+    if(noDrv)h+=`<div class="banner warn"><div><b>${noDrv} ${rs(noDrv)} saknar förare</b>${wait?`${wait} ${rs(wait)} väntar dessutom på svar.`:'Tryck på resan för att ta den.'}</div></div>`;
+    else if(wait)h+=`<div class="banner warn"><div><b>Väntar på svar</b>${wait} av ${total} kommande ${rs(total)} saknar svar från någon familj.</div></div>`;
+    else if(prel)h+=`<div class="banner warn"><div><b>${prel} ${rs(prel)} med preliminära svar</b>Klar när svaren är bekräftade.</div></div>`;
+    else h+=`<div class="banner ok"><div><b>Alla kommande resor är klara</b>Alla har svarat och alla som behöver skjuts har en förare.</div></div>`;
+  }
+  const fid=S.me.family_id;
+  if(fid&&act.length){
+    const cells=act.map(s=>['to','from'].map(d=>{const m=mode(s.id,fid,d);const a=effAnswer(s.id,fid);
+      const lab={driver:'Kör ✓',drive:'Kan köra',need:'Behöver skjuts',no:'Deltar ej',unk:'Ej svarat'}[m];
+      return`<button class="mcell m-${m}${a?.prelim?' m-maybe':''}" data-act="fill"><small>${fmtShort(s.date).split(' ')[0]} ${d==='to'?'dit':'hem'}</small><span>${lab}</span>${a?.prelim?'<span class="std">prel.</span>':''}</button>`}).join('')).join('');
+    const unk=act.reduce((n,s)=>n+['to','from'].filter(d=>mode(s.id,fid,d)==='unk').length,0);
+    h+=`<div class="card mine"><div class="hd"><div class="av" style="background:${famColor(fid)}">${esc(childName(fid)[0])}</div>
+      <div class="grow"><div class="t">${esc(famName(fid))}</div><div class="s">${unk?unk+' svar saknas':'Alla svar ifyllda'}</div></div>
+      <button class="btn sm ${unk?'acc':'ghost'}" data-act="fill">Fyll i veckan</button></div><div class="mgrid">${cells}</div></div>`;
+  }
+  const allL=act.length&&act.every(s=>isLocked(s.id)),anyL=act.some(s=>isLocked(s.id));
+  h+=`<div class="sec"><h2>Veckoplanering</h2><div class="row">${isMod()&&act.length&&!allL?`<button class="btn sm ghost" data-act="lockWeek">🔒 Lås veckan</button>`:''}${anyL?`<button class="btn sm ghost" data-act="unlockWeek">🔓 Lås upp</button>`:''}</div></div>`;
+  if(!list.length){
+    const next=sessList().find(s=>s.date>=isoD(addDays(S.week,7))&&!s.cancelled);
+    h+=`<div class="card empty"><h3>Inga träningar den här veckan</h3>${next?`<p>Nästa: ${fmtLong(next.date)}</p><button class="btn ghost" data-act="gotoweek" data-date="${next.date}">Gå till vecka ${isoWeek(pd(next.date))}</button>`:''}
+      ${isMod()?`<div class="sp"></div><button class="btn pri" data-act="sessEdit">Lägg till träning</button>`:''}</div>`;
+  }
+  for(const s of list)h+=sessCard(s);
+  return h;
+}
+function sessCard(s){
+  const d=pd(s.date);
+  const meta=[s.gather?`Samling <b>${esc(s.gather)}</b>`:'',`${esc(s.start)}–${esc(s.end)}`,esc(s.place)].filter(Boolean).join(' · ');
+  return`<article class="card sess ${s.cancelled?'cancel':''}">
+   <div class="shead"><div class="date"><b>${d.getDate()}</b><span>${MON3[d.getMonth()].toUpperCase()}</span></div>
+    <div class="grow"><h3>${cap(DAYS[d.getDay()])} · ${esc(s.title)}${s.cancelled?'<span class="tag c">Inställd</span>':''}${s.lock?.on&&!s.cancelled?' 🔒':''}</h3><div class="meta">${meta}</div>${s.info?`<div class="info">${esc(s.info)}</div>`:''}</div>
+    ${isMod()?`<button class="dots" data-act="sessMenu" data-sid="${s.id}" aria-label="Ändra träning">${ICON.dots}</button>`:''}</div>
+   ${s.cancelled?'':`<div class="trips">${tripCell(s,'to')}${tripCell(s,'from')}</div>`}
+   ${s.lock&&!s.cancelled?`<div class="lockbar ${s.lock.on?'on':'off'}"><span class="grow">${lockText(s)}</span>${s.lock.on?`<button class="btn sm ghost" data-act="unlock" data-sid="${s.id}">Lås upp</button>`:''}</div>`:''}</article>`;
+}
+function tripCell(s,dir){
+  const c=coverage(s,dir);const past=tripTime(s,dir)<new Date();
+  const t=dir==='to'?`före ${esc(dropTime(s))}`:`efter ${esc(s.end)}`;
+  let body;
+  if(c.ds.length)body=c.ds.map(d=>`<div class="drv"><b>${esc(parentName(d.fid,d.pid))} kör</b>${esc(childName(d.fid))} · ${Number(d.seats)} platser${c.st==='ok'?' ✓':''}</div>`).join('')+(c.st==='short'?`<div class="need" style="color:var(--warn);font-weight:600">${c.needers.length-c.seats} plats${c.needers.length-c.seats>1?'er':''} saknas</div>`:'');
+  else if(c.st==='open')body=`<div class="drv"><b>+ Vem kan köra?</b>${c.can.length?`${c.can.length} kan köra`:'Ingen förare än'}</div>`;
+  else if(c.st==='wait')body=`<div class="drv"><b>Väntar på svar</b>${c.unk.length} av ${c.modes.length} familjer har inte svarat</div>`;
+  else body=`<div class="drv"><b>Ingen skjuts behövs</b></div>`;
+  const kids=c.modes.map(x=>`<span class="kid m-${x.m}${x.prelim?' m-maybe':''}"><i></i>${esc(childName(x.fid))}${x.prelim&&x.m!=='no'?' ?':''}</span>`).join('');
+  const sug=!s.lock?.on&&!past&&['open','short'].includes(c.st)?bestSuggestion(s.id,dir):null;
+  const info=[c.needers.length?`${c.needers.length} behöver skjuts`:'',c.prelim.length?`${c.prelim.length} preliminär${c.prelim.length>1?'a':''}`:''].filter(Boolean).join(' · ');
+  return`<button class="trip st-${c.st==='prelim'?'maybe':c.st}" data-act="trip" data-sid="${s.id}" data-dir="${dir}"${past?' style="opacity:.75"':''}>
+    <div class="th"><span>${dir==='to'?'→ Lämning':'← Hämtning'}</span><span>${t}</span></div>${body}
+    ${info?`<div class="need">${info}</div>`:''}${sug?`<div class="sugg">Förslag: ${esc(famName(sug))}</div>`:''}<div class="kids">${kids}</div></button>`;
+}
+
+function viewChat(){
+  lsSet('seen.'+S.group.id,String(Date.now()));
+  let h=`<div class="sec" style="margin-top:4px"><h2>Chatt</h2></div><div class="chat">`;
+  if(!S.msgs.length)h+=`<div class="card empty"><h3>Inga meddelanden än</h3><p>Skriv om skjuts, byten eller annat kring träningarna.</p></div>`;
+  let last='';
+  for(const m of S.msgs){
+    const d=new Date(m.ts);const day=isoD(d);
+    if(day!==last){last=day;h+=`<div class="day">${day===isoD(new Date())?'Idag':fmtLong(day)}</div>`}
+    const mine=m.mid===S.me.member_id;
+    const who=m.fid?`${esc(parentName(m.fid,m.pid))} · ${esc(childName(m.fid))}`:'';
+    const canDel=mine||isMod();
+    h+=`<div class="msg ${mine?'mine':''}">${mine?'':`<div class="av" style="background:${famColor(m.fid)}">${esc((parentName(m.fid,m.pid)||'?')[0])}</div>`}
+      <div class="bub ${m.sys?'sys':''}"><div class="who">${who}</div>${esc(m.text).replace(/\n/g,'<br>')}
+      <div class="tm">${pad(d.getHours())}:${pad(d.getMinutes())}${canDel?`<button class="del" data-act="chatDel" data-id="${Number(m.id)}">ta bort</button>`:''}</div></div></div>`;
+  }
+  h+=`</div><form class="compose" data-form="chat"><div class="in"><input id="chatIn" type="text" placeholder="Skriv till gruppen…" autocomplete="off" enterkeyhint="send"><button class="btn acc" type="submit">Skicka</button></div></form>`;
+  return h;
+}
+
+function viewStats(){
+  const{fam,par}=computeStats();const fams=famList(true).filter(f=>!f.archived||fam[f.id].drives>0);
+  const max=Math.max(1,...fams.map(f=>fam[f.id].drives));
+  let h=`<div class="weekhead"><div><h1>Statistik</h1><div class="sub">Körningar per familj · lämning och hämtning räknas var för sig</div></div></div>`;
+  for(const f of fams.slice().sort((a,b)=>fam[b.id].drives-fam[a.id].drives)){
+    const st=fam[f.id];const col=famColor(f.id);
+    h+=`<div class="card stat"><div class="top2"><div class="av" style="background:${col}">${esc((f.child||'?')[0])}</div><div style="font-weight:700">${esc(famName(f.id))}</div>
+      <div class="num">${st.drives}<small>KÖRNINGAR</small></div></div><div class="bar"><i style="width:${st.drives/max*100}%;background:${col}"></i></div>
+      ${f.parents.filter(p=>!p.archived||par[p.id]).map(p=>`<div class="par"><span>${esc(p.name)}</span><b>${par[p.id]||0}</b></div>`).join('')}
+      ${f.baseline_other?`<div class="par"><span>Övriga</span><b>${f.baseline_other}</b></div>`:''}
+      <div class="bal">Åkt med andra: ${st.rides}</div></div>`;
+  }
+  h+=`<p class="hint">Inkluderar startsaldo från WhatsApp-chatten (14/9–12/11 2026). En körning räknas när tiden har passerat. Inställda träningar räknas inte.</p>`;
+  return h;
+}
+
+function viewGroup(){
+  const mod=isMod();
+  let h=`<div class="weekhead"><div><h1>${esc(S.group.name)}</h1><div class="sub">Du är ${esc(myName())}${mod?' · moderator':''}</div></div>${mod?`<button class="btn sm ghost" data-act="rename">✎ Byt namn</button>`:''}</div>`;
+  h+=`<div class="sec"><h2>Familjer</h2>${mod?`<button class="btn sm pri" data-act="famEdit">+ Ny familj</button>`:''}</div><div class="card box"><div class="list">`;
+  for(const f of famList()){
+    const linked=new Set(S.members.map(m=>m.pid));
+    h+=`<div class="li"><div class="av" style="background:${famColor(f.id)}">${esc((f.child||'?')[0])}</div><div class="grow"><div class="t">${esc(f.child)}${f.shared?.on?' <span class="tag p">delat boende</span>':''}</div>
+      <div class="s">${activeParents(f.id).map(p=>esc(p.name)+(mod&&linked.has(p.id)?' ●':'')).join(', ')||'Ingen förälder'}</div></div>
+      ${canEditFam(f.id)?`<button class="btn sm ghost" data-act="famEdit" data-fid="${f.id}">Ändra</button>`:''}</div>`;
+  }
+  h+=`</div>${mod?'<p class="hint" style="margin:8px 0 0">● = har en aktiv inbjudningslänk.</p>':''}</div>`;
+  if(mod){
+    h+=`<div class="sec"><h2>Inbjudningslänkar</h2><button class="btn sm pri" data-act="invite">+ Ny länk</button></div><div class="card box"><div class="list">`;
+    for(const m of S.members){
+      const seen=m.last_seen?new Date(m.last_seen):null;
+      h+=`<div class="li"><div class="grow"><div class="t">${esc(parentName(m.fid,m.pid))} · ${esc(childName(m.fid))}${m.role==='moderator'?' <span class="tag m">Moderator</span>':''}${m.id===S.me.member_id?' <span class="muted">(du)</span>':''}</div>
+        <div class="s">${seen?'Senast inne '+seen.getDate()+' '+MON3[seen.getMonth()]+' '+pad(seen.getHours())+':'+pad(seen.getMinutes()):'Har inte öppnat länken än'}</div></div>
+        <button class="btn sm ghost" data-act="memberMenu" data-mid="${m.id}">Hantera</button></div>`;
+    }
+    h+=`</div><p class="hint">Länken är personlig: den som öppnar den är inloggad som den föräldern. Spärra länken om den hamnat fel.</p></div>`;
+    const now=isoD(new Date());const up=sessList().filter(s=>s.date>=now);
+    h+=`<div class="sec"><h2>Träningar</h2><div class="row"><button class="btn sm ghost" data-act="import">Importera</button><button class="btn sm pri" data-act="sessEdit">+ Lägg till</button></div></div><div class="card box"><div class="list">`;
+    h+=up.map(s=>`<div class="li"><div class="grow"><div class="t">${fmtShort(s.date)} · ${esc(s.title)}${s.cancelled?'<span class="tag c">Inställd</span>':''}</div><div class="s">${s.gather?'Samling '+esc(s.gather)+' · ':''}${esc(s.start)}–${esc(s.end)} · ${esc(s.place)}</div></div><button class="dots" data-act="sessMenu" data-sid="${s.id}">${ICON.dots}</button></div>`).join('')||'<p class="hint">Inga kommande träningar.</p>';
+    h+=`</div></div>`;
+  }
+  h+=`<div class="sec"><h2>Den här enheten</h2></div><div class="card box"><div class="row"><button class="btn ghost" data-act="groups">Grupper</button><button class="btn ghost" data-act="forget">Logga ut</button></div><p class="hint">Logga ut tar bort din länk från den här enheten. Du kommer in igen genom att öppna länken.</p></div>`;
+  return h;
+}
+
+/* ================= Popuprutor ================= */
+const LIVE=new Set(['trip','fill','memberMenu','sessMenu']);
+function sheet(kind,args={}){S.sheet={kind,args};renderSheet(true)}
+function closeSheet(){const el=$('#sheet');S.sheet=null;el.classList.remove('open');setTimeout(()=>{if(!S.sheet){el.hidden=true;el.innerHTML=''}},220)}
+function renderSheet(first){
+  const k=S.sheet;const el=$('#sheet');if(!k)return;
+  if(!first&&!LIVE.has(k.kind))return;
+  const body=SHEETS[k.kind](k.args);if(body==null){closeSheet();return}
+  if(first||!el.querySelector('.pbody')){
+    el.innerHTML=`<div class="scrim" data-act="close"></div><div class="panel" role="dialog" aria-modal="true"><div class="xbar"><button class="xbtn" data-act="close" aria-label="Stäng">✕</button></div><div class="grab"></div><div class="pbody">${body}</div></div>`;
+    el.hidden=false;requestAnimationFrame(()=>requestAnimationFrame(()=>el.classList.add('open')));
+  }else{const p=el.querySelector('.panel');const st=p.scrollTop;el.querySelector('.pbody').innerHTML=body;p.scrollTop=st}
+}
+function ask(msg,ok='OK',danger){return new Promise(res=>{const d=$('#dlg');d.innerHTML=`<div class="scrim"></div><div class="dbox"><p>${esc(msg)}</p><div class="row end"><button class="btn ghost" data-r="0">Avbryt</button><button class="btn ${danger?'danger':'pri'}" data-r="1">${esc(ok)}</button></div></div>`;d.hidden=false;d.onclick=e=>{const b=e.target.closest('[data-r]');if(!b&&!e.target.classList.contains('scrim'))return;d.hidden=true;d.innerHTML='';res(!!b&&b.dataset.r==='1')}})}
+let toastT;function toast(t){let el=$('.toast');if(!el){el=document.createElement('div');el.className='toast';document.body.appendChild(el)}el.textContent=t;clearTimeout(toastT);toastT=setTimeout(()=>el.remove(),3200)}
+const segBtns=(cur,opts,act,data)=>`<div class="seg">${opts.map(([v,l])=>`<button type="button" class="${cur===v?'on v-'+v:''}" data-act="${act}" data-m="${v}" ${data}>${l}</button>`).join('')}</div>`;
+
+const SHEETS={
+  fill(){
+    const fid=actingFid();if(!fid)return null;const own=fid===S.me.family_id;
+    const list=weekSess().filter(s=>!s.cancelled);
+    let h=`<h2>Fyll i vecka ${isoWeek(S.week)}</h2><p class="lead">${esc(famName(fid))} · sparas direkt</p>`;
+    if(isMod())h+=`<label class="f"><span>Svara för</span><select data-change="acting">${famList().map(f=>`<option value="${f.id}" ${f.id===fid?'selected':''}>${esc(famName(f.id))}${f.id===S.me.family_id?' (din)':''}</option>`).join('')}</select></label>`;
+    if(!list.length)return h+`<p class="hint">Inga träningar den här veckan.</p>`;
+    h+=`<button class="btn sm ghost" style="margin-bottom:12px" data-act="copyPrev">Samma som förra veckan</button>`;
+    for(const s of list){
+      const a=effAnswer(s.id,fid);const att=a?.att||'yes';const cu=own?custodian(fid,s.date):null;
+      const std=a?.isDefault?' <span class="tag p">standardsvar</span>':'';
+      h+=`<div class="fs"><div class="ttl">${fmtShort(s.date)} · ${esc(s.title)}${std}</div><div class="sub">${s.gather?'Samling '+esc(s.gather)+' · ':''}${esc(s.start)}–${esc(s.end)}</div>
+        ${cu?`<div class="sub" style="margin-top:-6px;font-weight:700;color:${cu===S.me.parent_id?'var(--ok)':'var(--ink2)'}">${cu===S.me.parent_id?'Du har ansvar':esc(parentName(fid,cu))+' har ansvar'}</div>`:''}`;
+      if(isLocked(s.id)){h+=`<div class="hint">${lockText(s)} – svaren kan inte ändras.</div></div>`;continue}
+      h+=segBtns(att,[['yes','Deltar'],['no','Deltar ej']],'setAtt',`data-sid="${s.id}"`);
+      if(att==='yes'){
+        for(const d of['to','from']){
+          const m=mode(s.id,fid,d);const cur=m==='driver'?'drive':m;
+          const n=famList().filter(x=>['drive','driver'].includes(mode(s.id,x.id,d))).length;
+          h+=`<div class="dirrow"><div class="lbl">${d==='to'?'Lämning':'Hämtning'}<small>${d==='to'?'före '+esc(dropTime(s)):'efter '+esc(s.end)}</small></div><div>
+            ${segBtns(cur,[['drive','Kan köra'],['need','Behöver skjuts']],'setMode',`data-sid="${s.id}" data-dir="${d}"`)}
+            ${m==='driver'?'<div class="hint" style="margin-top:4px">✓ Ni kör den här resan</div>':n===0?'<div class="nudge">Ingen kan köra än.</div>':n===1?'<div class="nudge">En förare finns – fler som kan köra ger bättre fördelning och valmöjlighet.</div>':''}</div></div>`;
+        }
+        h+=`<label class="chk" style="padding-bottom:0"><input type="checkbox" data-change="prelim" data-sid="${s.id}" ${a?.prelim?'checked':''}><span>Preliminärt svar <span class="hint">– vi bekräftar senare</span></span></label>`;
+      }
+      h+=`</div>`;
+    }
+    h+=`<p class="hint">Svaren är fasta om du inte kryssar i ”Preliminärt”. ”Kan köra” betyder att ni kan ta resan – förare blir ni när ni trycker ”Jag kör” på resan.</p><button class="btn pri block" data-act="close">Klar</button>`;
+    return h;
+  },
+  trip({sid,dir}){
+    const s=S.sess[sid];if(!s)return null;const c=coverage(s,dir);const locked=isLocked(sid);const fid=S.me.family_id;
+    let h=`<h2>${dir==='to'?'Lämning':'Hämtning'} ${fmtShort(s.date).toLowerCase()}</h2><p class="lead">${esc(s.title)} · ${dir==='to'?`på plats före ${esc(dropTime(s))}`:`hämtas efter ${esc(s.end)}`} · ${esc(s.place)}</p>`;
+    if(s.lock)h+=`<div class="banner ${s.lock.on?'info':'warn'}"><div class="grow"><b>${lockText(s)}</b>${s.lock.on?'Svar och förare kan inte ändras.':'Ändringar kan göras – se till att alla får informationen.'}</div>${s.lock.on?`<button class="btn sm ghost" data-act="unlock" data-sid="${sid}">Lås upp</button>`:''}</div>`;
+    h+=`<h4>Förare</h4><div class="list">`;
+    if(!c.ds.length)h+=`<p class="hint" style="margin:0 0 6px">Ingen förare än.</p>`;
+    for(const d of c.ds)h+=`<div class="li"><div class="av" style="background:${famColor(d.fid)}">${esc(parentName(d.fid,d.pid)[0])}</div><div class="grow"><div class="t">${esc(parentName(d.fid,d.pid))} · ${esc(famName(d.fid))}</div><div class="s">${Number(d.seats)} lediga platser</div></div>
+      ${!locked&&canEditFam(d.fid)?`<button class="btn sm ghost" data-act="take" data-sid="${sid}" data-dir="${dir}" data-fid="${d.fid}">Ändra</button>`:''}</div>`;
+    h+=`</div>`;
+    if(!locked){
+      if(fid&&!c.ds.some(d=>d.fid===fid)&&mode(sid,fid,dir)!=='no')h+=`<div class="sp"></div><button class="btn acc block" data-act="take" data-sid="${sid}" data-dir="${dir}" data-fid="${fid}">${ICON.car} Jag kör</button>`;
+      const sug=bestSuggestion(sid,dir);
+      if(sug&&c.st!=='ok')h+=`<p class="hint">Förslag: <b>${esc(famName(sug))}</b> har sagt att de kan köra och står på tur.</p>`;
+      if(isMod()){const others=famList().filter(f=>f.id!==fid&&!c.ds.some(d=>d.fid===f.id)&&mode(sid,f.id,dir)!=='no');
+        if(others.length)h+=`<label class="f" style="margin-top:10px"><span>Sätt förare åt annan familj</span><select data-change="setDriverFam" data-sid="${sid}" data-dir="${dir}"><option value="">Välj familj…</option>${others.map(f=>`<option value="${f.id}">${esc(famName(f.id))}${mode(sid,f.id,dir)==='drive'?' – kan köra':''}</option>`).join('')}</select></label>`}
+    }
+    if(c.st==='short')h+=`<p class="hint" style="color:var(--warn)">Platserna räcker inte: ${c.needers.length} behöver skjuts, ${c.seats} lediga platser.</p>`;
+    h+=`<h4>Barnen</h4><div class="list">`;
+    for(const x of c.modes){
+      const lab={driver:'Kör',drive:'Kan köra',need:'Behöver skjuts',no:'Deltar ej',unk:'Har inte svarat'}[x.m]+(x.prelim&&x.m!=='no'?' (preliminärt)':'');
+      const adr=['need','unk','drive'].includes(x.m)?addressFor(x.fid,s.date):'';const cu=custodian(x.fid,s.date);
+      h+=`<div class="li" style="flex-wrap:wrap"><span class="kid m-${x.m}${x.prelim?' m-maybe':''}"><i></i>${esc(childName(x.fid))}</span><span class="s grow">${lab}</span>
+        ${adr||cu&&x.m!=='no'?`<div class="addr">📍 ${dir==='to'?'Hämtas':'Lämnas'}: ${adr?esc(adr):'adress saknas'}${cu?' (hos '+esc(parentName(x.fid,cu))+')':''}</div>`:''}</div>`;
+    }
+    h+=`</div>`;
+    if(!locked&&needsAction(c.st))h+=`<div class="sp"></div><button class="btn ghost block" data-act="askChat" data-sid="${sid}" data-dir="${dir}">Fråga i chatten</button>`;
+    return h;
+  },
+  take({sid,dir,fid}){
+    const f=S.fam[fid];if(!f)return null;const ex=drivers(sid,dir).find(d=>d.fid===fid);
+    const defP=ex?.pid||defaultDriverPid(fid,S.sess[sid].date);
+    return`<h2>${ex?'Ändra förare':'Vem kör?'}</h2><p class="lead">${esc(famName(fid))} · ${dir==='to'?'lämning':'hämtning'} ${fmtShort(S.sess[sid].date).toLowerCase()}</p>
+    <form data-form="take" data-sid="${sid}" data-dir="${dir}" data-fid="${fid}">
+      ${activeParents(fid).map(p=>`<label class="chk"><input type="radio" name="pid" value="${p.id}" ${p.id===defP?'checked':''}><span>${esc(p.name)}</span></label>`).join('')}
+      <label class="f"><span>Lediga platser (utöver ${esc(f.child)})</span><input type="number" name="seats" min="0" max="8" value="${Number(ex?.seats??famSeats(fid))}"></label>
+      <div class="row between">${ex?`<button type="button" class="btn ghost" data-act="drvRemove" data-sid="${sid}" data-dir="${dir}" data-fid="${fid}">Ta bort som förare</button>`:'<span></span>'}<button class="btn acc" type="submit">${ex?'Spara':'Jag kör'}</button></div></form>`;
+  },
+  groups(){
+    const a=tokens();
+    return`<h2>Grupper</h2><div class="list">${a.map(x=>`<div class="li"><div class="grow t">${esc(x.name||'Grupp')}</div>${x.t===S.token?'<span class="tag m">Öppen</span>':`<button class="btn sm ghost" data-act="switch" data-t="${x.t}">Öppna</button>`}</div>`).join('')}</div>
+    <div class="sp"></div><button class="btn ghost block" data-act="newGroup">+ Skapa ny samåkningsgrupp</button>
+    <p class="hint">Du kommer med i fler grupper genom att öppna en inbjudningslänk från gruppens moderator.</p>`;
+  },
+  newGroup(){
+    return`<h2>Ny samåkningsgrupp</h2><p class="lead">Egen planering, chatt och statistik. Du blir moderator.</p><form data-form="newGroup">
+      <label class="f"><span>Gruppens namn</span><input type="text" name="name" required></label>
+      <div class="g2"><label class="f"><span>Ditt barns namn</span><input type="text" name="child" required></label><label class="f"><span>Ditt förnamn</span><input type="text" name="parent" required value="${esc(myName())}"></label></div>
+      <div class="row end"><button class="btn pri" type="submit">Skapa</button></div></form>`;
+  },
+  rename(){return`<h2>Byt namn på gruppen</h2><form data-form="rename"><label class="f"><span>Namn</span><input type="text" name="name" value="${esc(S.group.name)}" required></label><div class="row end"><button class="btn pri" type="submit">Spara</button></div></form>`},
+  famEdit({fid}){
+    const f=fid?S.fam[fid]:{child:'',parents:[{id:'',name:'',address:'',baseline:0}],seats:3,address:'',shared:{on:false},defaults:{},baseline_other:0};if(!f)return null;
+    const sh=!!f.shared?.on;const mod=isMod();
+    const wds=[...new Set(sessList().map(x=>pd(x.date).getDay()))].sort((a,b)=>((a+6)%7)-((b+6)%7));
+    return`<h2>${fid?esc(f.child):'Ny familj'}</h2><p class="lead">Namnändringar slår igenom överallt – historiken behålls.</p><form data-form="fam" data-fid="${fid||''}" class="${sh?'shared':''}">
+      <label class="f"><span>Barnets namn</span><input type="text" name="child" value="${esc(f.child)}" required></label>
+      <h4>Föräldrar (förnamn)</h4><div id="parList">${(fid?activeParents(fid):f.parents).map(p=>parentRow(p,mod)).join('')}</div>
+      <button type="button" class="btn sm ghost" data-act="addParent">+ Lägg till förälder</button><div class="sp"></div>
+      <label class="f not-shared"><span>Upphämtningsadress</span><input type="text" name="address" value="${esc(f.address||'')}"></label>
+      <label class="chk"><input type="checkbox" name="shared" data-change="sharedToggle" ${sh?'checked':''}><span><b>Delat boende</b><br><span class="hint">Barnet bor hos olika föräldrar olika dagar.</span></span></label>
+      <div class="only-shared"><p class="hint" style="margin:0 0 8px">Tryck på en dag för att byta förälder. Adress per förälder anges ovan. Vecka ${isoWeek(new Date())} är ${isoWeek(new Date())%2?'udda':'jämn'}.</p>${custRow('odd','Udda veckor',f)}${custRow('even','Jämna veckor',f)}</div>
+      <label class="f"><span>Lediga platser i bilen (utöver eget barn)</span><input type="number" name="seats" value="${Number(f.seats??3)}" min="0" max="8"></label>
+      <h4>Standardsvar per veckodag</h4><p class="hint" style="margin-top:0">Fylls i automatiskt. Ett svar för en enskild träning gäller före standardsvaret.</p>
+      ${(wds.length?wds:[1,2,4]).map(d=>`<div class="defrow"><span>${cap(DAYS[d])}</span><select name="def_${d}">${DEF_OPTS.map(([v,l])=>`<option value="${v}" ${(f.defaults?.[String(d)]||'')===v?'selected':''}>${l}</option>`).join('')}</select></div>`).join('')}
+      ${mod?`<h4>Startsaldo (körningar före Samåk)</h4><p class="hint" style="margin-top:0">Anges per förälder ovan. Körningar som inte kan knytas till någon förälder:</p><label class="f"><span>Övriga</span><input type="number" name="baseline_other" min="0" value="${Number(f.baseline_other||0)}"></label>`:''}
+      <div class="sp"></div><div class="row between">${fid&&mod?`<button type="button" class="btn ghost" data-act="famArchive" data-fid="${fid}">Ta bort familj</button>`:'<span></span>'}<button class="btn pri" type="submit">Spara</button></div></form>`;
+  },
+  invite(){
+    return`<h2>Ny inbjudningslänk</h2><p class="lead">Välj vem länken ska gå till. Den som öppnar den blir inloggad som den föräldern.</p><form data-form="invite">
+      <label class="f"><span>Familj</span><select name="fid" data-change="invFam">${famList().map(f=>`<option value="${f.id}">${esc(famName(f.id))}</option>`).join('')}</select></label>
+      <div id="invParents">${invParents(famList()[0]?.id)}</div>
+      <label class="chk"><input type="checkbox" name="mod"><span>Ge moderatorrättigheter</span></label>
+      <div class="row end"><button class="btn pri" type="submit">Skapa länk</button></div></form>`;
+  },
+  link({token,name}){
+    const url=linkUrl(token);
+    return`<h2>Länk till ${esc(name)}</h2><p class="lead">Skicka den här länken till ${esc(name)} och bara till hen.</p><textarea id="linkText" readonly style="min-height:90px">${esc(url)}</textarea><div class="sp"></div>
+      <div class="row"><button class="btn acc grow" data-act="copyLink" data-t="${token}">Kopiera</button>${navigator.share?`<button class="btn ghost grow" data-act="shareLink" data-t="${token}" data-name="${esc(name)}">Dela…</button>`:''}</div>`;
+  },
+  memberMenu({mid}){
+    const m=S.members.find(x=>x.id===mid);if(!m)return null;const nm=parentName(m.fid,m.pid);const self=m.id===S.me.member_id;
+    return`<h2>${esc(nm)} · ${esc(childName(m.fid))}</h2><p class="lead">${m.role==='moderator'?'Moderator':'Medlem'}${self?' · det här är du':''}</p>
+      <button class="btn pri block" data-act="showLink" data-mid="${m.id}">Visa och dela länken</button><div class="sp"></div>
+      ${m.role==='moderator'?`<button class="btn ghost block" data-act="role" data-mid="${m.id}" data-r="member">Ta bort moderatorrättigheter</button>`:`<button class="btn ghost block" data-act="role" data-mid="${m.id}" data-r="moderator">Gör till moderator</button>`}
+      ${self?'':`<div class="sp"></div><button class="btn ghost block" style="color:var(--bad)" data-act="revoke" data-mid="${m.id}">Spärra länken</button>`}
+      <p class="hint">Spärrad länk slutar fungera direkt. Skapa en ny länk om personen ska in igen.</p>`;
+  },
+  sessMenu({sid}){
+    const s=S.sess[sid];if(!s)return null;
+    return`<h2>${esc(s.title)}</h2><p class="lead">${fmtLong(s.date)} · ${esc(s.start)}–${esc(s.end)}</p>
+     <button class="btn pri block" data-act="sessEdit" data-sid="${sid}">Ändra detaljer</button><div class="sp"></div>
+     <button class="btn ghost block" data-act="${s.lock?.on?'unlock':'lockOne'}" data-sid="${sid}">${s.lock?.on?'🔓 Lås upp':'🔒 Lås träningen'}</button><div class="sp"></div>
+     <button class="btn ghost block" data-act="sessCancel" data-sid="${sid}">${s.cancelled?'Återställ (ej inställd)':'Ställ in träningen'}</button><div class="sp"></div>
+     <button class="btn ghost block" style="color:var(--bad)" data-act="sessDelete" data-sid="${sid}">Ta bort</button>`;
+  },
+  sessEdit({sid}){
+    const s=sid?S.sess[sid]:{title:'Träning',date:isoD(S.week<new Date()?new Date():S.week),place:'',gather:'',start:'17:00',end:'18:30',info:''};if(!s)return null;
+    return`<h2>${sid?'Ändra träning':'Ny träning'}</h2><form data-form="sess" data-sid="${sid||''}">
+      <label class="f"><span>Namn</span><input type="text" name="title" value="${esc(s.title)}" required></label>
+      <div class="g2"><label class="f"><span>Datum</span><input type="date" name="date" value="${esc(s.date)}" required></label><label class="f"><span>Plats</span><input type="text" name="place" value="${esc(s.place)}"></label></div>
+      <div class="g3"><label class="f"><span>Samling</span><input type="time" name="gather" value="${esc(s.gather)}"></label><label class="f"><span>Start</span><input type="time" name="start" value="${esc(s.start)}" required></label><label class="f"><span>Slut</span><input type="time" name="end" value="${esc(s.end)}" required></label></div>
+      <label class="f"><span>Övrig information</span><input type="text" name="info" value="${esc(s.info)}"></label>
+      ${sid?(s.series_id?`<label class="chk"><input type="radio" name="scope" value="one" checked><span>Bara det här tillfället</span></label><label class="chk"><input type="radio" name="scope" value="following"><span>Det här och alla senare i serien</span></label>`:''):
+        `<label class="chk"><input type="checkbox" name="repeat" data-change="repeat"><span>Upprepa varje vecka</span></label><div id="repeatBox" hidden><label class="f"><span>Till och med</span><input type="date" name="until" value="${isoD(addDays(pd(s.date),56))}"></label></div>`}
+      <div class="row end"><button class="btn pri" type="submit">Spara</button></div></form>`;
+  },
+  importSL(){
+    const rows=S.importRows;
+    let h=`<h2>Importera träningar</h2><p class="lead">Klistra in aktiviteter kopierade från Svenska lag, eller välj en kalenderfil (.ics).</p>
+     <label class="f"><span>Text från Svenska lag</span><textarea id="slText" placeholder="Träning Stadium Arena&#10;Måndag 16 nov, 17:00-18:30&#10;Stadium Arena C &amp; D hallen&#10;Samling: 16:50"></textarea></label>
+     <div class="row"><button class="btn pri" data-act="parseSL">Läs in texten</button><label class="btn ghost" style="cursor:pointer">Välj .ics-fil<input type="file" accept=".ics,text/calendar" data-change="icsFile" hidden></label></div>`;
+    if(rows){
+      if(!rows.length)h+=`<p class="hint" style="color:var(--bad)">Hittade inga träningar. Texten behöver en rad som ”Måndag 16 nov, 17:00-18:30”.</p>`;
+      else h+=`<h4>Hittade ${rows.length}</h4><table class="tbl">`+rows.map((r,i)=>`<tr><td><input type="checkbox" data-imp="${i}" ${r.dup?'':'checked'}></td><td><b>${fmtShort(r.date)}</b> · ${esc(r.title)}<br><span class="muted">${r.gather?'Samling '+esc(r.gather)+' · ':''}${esc(r.start)}–${esc(r.end)} · ${esc(r.place)}</span>${r.dup?'<br><span class="tag p" style="margin:0">finns redan</span>':''}</td></tr>`).join('')+`</table><div class="sp"></div><button class="btn acc block" data-act="doImport">Lägg till markerade</button>`;
+    }
+    return h;
+  }
+};
+const linkUrl=t=>location.origin+location.pathname+'#t='+t;
+const parentRow=(p,mod)=>`<div style="margin-bottom:10px" data-prow="${p.id||''}" data-key="${Math.random().toString(36).slice(2,8)}"><div class="row"><input type="text" class="pname" style="flex:1" value="${esc(p.name)}" placeholder="Förnamn">${mod?`<input type="number" class="pbase" style="width:76px" min="0" value="${Number(p.baseline||0)}" title="Startsaldo">`:''}<button type="button" class="btn sm ghost" data-act="rmParent" aria-label="Ta bort förälder">✕</button></div>
+  <input type="text" class="paddr only-shared" style="margin-top:6px" value="${esc(p.address||'')}" placeholder="Adress när barnet är hos ${esc(p.name||'föräldern')}"></div>`;
+const WD=[1,2,3,4,5,6,0];
+function custRow(wk,label,f){
+  const ps=(f.parents||[]).filter(p=>!p.archived);const map=f.shared?.[wk]||{};
+  return`<div style="font-size:13px;font-weight:600">${label}</div><div class="days" data-wk="${wk}">${WD.map(d=>{const pid=ps.some(p=>p.id===map[d])?map[d]:(ps[0]?.id||'');const nm=ps.find(p=>p.id===pid)?.name||'?';
+    return`<button type="button" data-act="cust" data-day="${d}" data-v="${pid}"><b>${esc(nm.slice(0,2))}</b>${cap(DAYS[d].slice(0,3))}</button>`}).join('')}</div>`;
+}
+function invParents(fid){const ps=activeParents(fid);return`<label class="f"><span>Förälder</span><select name="pid">${ps.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')}<option value="__new">Ny förälder…</option></select></label><label class="f"><span>Namn om ny förälder</span><input type="text" name="newName" placeholder="Förnamn"></label>`}
+
+/* ================= Svenska lag / ICS ================= */
+const SL_DATE=/^(?:(måndag|tisdag|onsdag|torsdag|fredag|lördag|söndag)\s+)?(\d{1,2})\s+(jan|feb|mar|apr|maj|jun|jul|aug|sep|okt|nov|dec)[a-zåäö]*\.?\s*(\d{4})?\s*,?\s*(?:kl\.?\s*)?(\d{1,2})[:.](\d{2})\s*[-–—]\s*(\d{1,2})[:.](\d{2})/i;
+const SL_NOISE=/^(fyll i närvaro|anmäl|samling\b|kallade|närvaro|svara|[A-ZÅÄÖ]{1,4}\d{1,2}\s*[-–]\s*\d{4}$)/i;
+function inferYear(m,d,ex){if(ex)return Number(ex);const now=new Date();let y=now.getFullYear();if(new Date(y,m,d)<addDays(now,-120))y++;return y}
+function parseSvenskaLag(text){
+  const L=String(text).split(/\r?\n/).map(s=>s.replace(/\s+/g,' ').trim()).filter(Boolean);const out=[];
+  for(let i=0;i<L.length;i++){const m=L[i].match(SL_DATE);if(!m)continue;
+    const mon=MON3.indexOf(m[3].slice(0,3).toLowerCase());const day=Number(m[2]);const y=inferYear(mon,day,m[4]);
+    let title='';for(let j=i-1;j>=Math.max(0,i-2);j--){if(!SL_NOISE.test(L[j])&&!SL_DATE.test(L[j])){title=L[j];break}}
+    let place='',gather='';
+    for(let j=i+1;j<Math.min(L.length,i+5);j++){if(SL_DATE.test(L[j]))break;const g=L[j].match(/samling:?\s*(\d{1,2})[:.](\d{2})/i);if(g){gather=pad(g[1])+':'+g[2];continue}if(!place&&!SL_NOISE.test(L[j])&&j===i+1)place=L[j]}
+    out.push({title:title||'Träning',date:`${y}-${pad(mon+1)}-${pad(day)}`,start:pad(m[5])+':'+m[6],end:pad(m[7])+':'+m[8],place,gather});
+  }
+  return out;
+}
+function parseICS(text){
+  const raw=String(text).replace(/\r\n[ \t]/g,'').replace(/\n[ \t]/g,'').split(/\r?\n/);const out=[];let ev=null;
+  const un=v=>v.replace(/\\n/gi,'\n').replace(/\\,/g,',').replace(/\\;/g,';').replace(/\\\\/g,'\\');
+  const dt=v=>{const m=v.match(/(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})?(Z)?)?/);if(!m)return null;if(m[7])return new Date(Date.UTC(+m[1],m[2]-1,+m[3],+(m[4]||0),+(m[5]||0)));return new Date(+m[1],m[2]-1,+m[3],+(m[4]||0),+(m[5]||0))};
+  for(const line of raw){
+    if(line==='BEGIN:VEVENT'){ev={};continue}
+    if(line==='END:VEVENT'){if(ev&&ev.s){const s=ev.s,e=ev.e||ev.s;const g=(ev.desc||'').match(/samling:?\s*(\d{1,2})[:.](\d{2})/i);
+      out.push({title:ev.sum||'Träning',date:isoD(s),start:pad(s.getHours())+':'+pad(s.getMinutes()),end:pad(e.getHours())+':'+pad(e.getMinutes()),place:ev.loc||'',gather:g?pad(g[1])+':'+g[2]:''})}ev=null;continue}
+    if(!ev)continue;const i=line.indexOf(':');if(i<0)continue;const key=line.slice(0,i).split(';')[0].toUpperCase();const val=line.slice(i+1);
+    if(key==='SUMMARY')ev.sum=un(val).trim();else if(key==='LOCATION')ev.loc=un(val).trim();else if(key==='DESCRIPTION')ev.desc=un(val);else if(key==='DTSTART')ev.s=dt(val);else if(key==='DTEND')ev.e=dt(val);
+  }
+  return out;
+}
+const markDup=rows=>{const ex=sessList();return rows.map(r=>({...r,dup:ex.some(s=>s.date===r.date&&s.start===r.start)}))};
+
+/* ================= Åtgärder ================= */
+async function saveAnswer(sid,fid,patch){
+  const a=effAnswer(sid,fid)||{att:'yes',to:null,from:null,prelim:false};
+  const n={att:a.att||'yes',to:a.to||null,from:a.from||null,prelim:!!a.prelim,...patch};
+  S.ans[sid+'__'+fid]={sid,fid,...n};render();renderSheet();
+  await act('api_answer',{p_session:sid,p_family:fid,p_att:n.att,p_to:n.to,p_from:n.from,p_prelim:n.prelim});
+}
+const ACT={
+  close:closeSheet,
+  retry(){S.loading=true;render();refresh(true)},
+  view(d){S.view=d.v;if(d.v==='chat'){S._scroll=true;refresh()}render();schedule();if(d.v!=='chat')window.scrollTo(0,0)},
+  wk(d){const n=Number(d.d);S.week=n===0?monday(new Date()):addDays(S.week,7*n);render()},
+  gotoweek(d){S.week=monday(pd(d.date));render();window.scrollTo(0,0)},
+  fill(){S.acting=null;sheet('fill')},
+  trip(d){sheet('trip',{sid:d.sid,dir:d.dir})},
+  groups(){sheet('groups')},
+  switch(d){lsSet('cur',d.t);location.reload()},
+  async forget(){if(!await ask('Logga ut från den här enheten? Du behöver din länk för att komma in igen.','Logga ut',true))return;const a=tokens().filter(x=>x.t!==S.token);saveTokens(a);lsSet('cur',a[0]?.t||'');location.reload()},
+  setAtt(d){saveAnswer(d.sid,actingFid(),{att:d.m})},
+  async setMode(d){const fid=actingFid();
+    if(drivers(d.sid,d.dir).some(x=>x.fid===fid)&&d.m==='need'){if(!await ask('Ni står som förare för den här resan. Ta bort er som förare?','Ta bort'))return;await act('api_driver_remove',{p_session:d.sid,p_dir:d.dir,p_family:fid})}
+    saveAnswer(d.sid,fid,{att:'yes',[d.dir]:d.m})},
+  async copyPrev(){const fid=actingFid();const a=isoD(addDays(S.week,-7)),b=isoD(S.week);const prev=sessList().filter(s=>s.date>=a&&s.date<b);let n=0;
+    for(const s of weekSess().filter(s=>!s.cancelled&&!isLocked(s.id))){const p=prev.find(x=>pd(x.date).getDay()===pd(s.date).getDay());const pa=p&&S.ans[p.id+'__'+fid];if(!pa)continue;
+      await saveAnswer(s.id,fid,{att:pa.att,to:pa.to,from:pa.from,prelim:pa.prelim});n++}
+    toast(n?`Kopierade ${n} svar`:'Inga svar förra veckan att kopiera')},
+  take(d){const fid=d.fid;const ex=drivers(d.sid,d.dir).find(x=>x.fid===fid);
+    if(!ex&&activeParents(fid).length===1&&fid===S.me.family_id){act('api_driver_set',{p_session:d.sid,p_dir:d.dir,p_family:fid,p_parent:activeParents(fid)[0].id,p_seats:famSeats(fid)},'Klart – du kör');return}
+    sheet('take',{sid:d.sid,dir:d.dir,fid})},
+  async drvRemove(d){if(!await ask('Ta bort föraren från resan?','Ta bort',true))return;await act('api_driver_remove',{p_session:d.sid,p_dir:d.dir,p_family:d.fid});sheet('trip',{sid:d.sid,dir:d.dir})},
+  async askChat(d){const s=S.sess[d.sid];const c=coverage(s,d.dir);
+    await act('api_chat',{p_text:`Vem kan köra ${d.dir==='to'?'lämningen':'hämtningen'} ${fmtShort(s.date).toLowerCase()} (${d.dir==='to'?'före '+dropTime(s):'efter '+s.end})?${c.needers.length?' Behöver skjuts: '+c.needers.map(x=>childName(x.fid)).join(', ')+'.':''}`});
+    closeSheet();S.view='chat';S._scroll=true;render()},
+  async chatDel(d){if(!await ask('Ta bort meddelandet?','Ta bort',true))return;act('api_chat_delete',{p_id:Number(d.id)})},
+  async lockWeek(){const list=weekSess().filter(s=>!s.cancelled&&!isLocked(s.id));if(!list.length)return;
+    if(!await ask(`Lås vecka ${isoWeek(S.week)}? Ingen kan ändra svar eller förare förrän någon låser upp. En sammanfattning skickas till chatten.`,'Lås veckan'))return;
+    act('api_lock',{p_sessions:list.map(s=>s.id),p_on:true,p_message:weekSummary()},'Veckan är låst')},
+  async lockOne(d){const s=S.sess[d.sid];if(!await ask(`Lås ${fmtShort(s.date).toLowerCase()}?`,'Lås'))return;
+    await act('api_lock',{p_sessions:[s.id],p_on:true,p_message:`🔒 ${myName()} låste ${fmtShort(s.date).toLowerCase()} (${s.title}).`},'Låst');closeSheet()},
+  async unlock(d){const s=S.sess[d.sid];if(!await ask('Du ansvarar för att alla får information om eventuella ändringar. Ett meddelande skickas till chatten.','Lås upp'))return;
+    act('api_lock',{p_sessions:[s.id],p_on:false,p_message:`🔓 ${myName()} låste upp ${fmtShort(s.date).toLowerCase()} (${s.title}). Ändringar kan göras – håll koll här.`},'Upplåst')},
+  async unlockWeek(){const list=weekSess().filter(s=>isLocked(s.id));if(!list.length)return;
+    if(!await ask('Du ansvarar för att alla får information om eventuella ändringar. Ett meddelande skickas till chatten.','Lås upp'))return;
+    act('api_lock',{p_sessions:list.map(s=>s.id),p_on:false,p_message:`🔓 ${myName()} låste upp vecka ${isoWeek(S.week)}. Ändringar kan göras – håll koll här.`},'Upplåst')},
+  rename(){sheet('rename')},
+  newGroup(){sheet('newGroup')},
+  famEdit(d){sheet('famEdit',{fid:d.fid})},
+  addParent(){const l=$('#parList');l.insertAdjacentHTML('beforeend',parentRow({id:'',name:''},isMod()));l.lastElementChild.querySelector('.pname').focus()},
+  rmParent(d,el){el.closest('[data-prow]').remove()},
+  cust(d,el){const form=el.closest('form');const ps=[...form.querySelectorAll('[data-prow]')].filter(r=>r.dataset.prow).map(r=>({id:r.dataset.prow,name:r.querySelector('.pname').value.trim()||'?'}));
+    if(!ps.length){toast('Spara föräldrarna först');return}const i=ps.findIndex(p=>p.id===el.dataset.v);const nx=ps[(i+1)%ps.length];el.dataset.v=nx.id;el.querySelector('b').textContent=nx.name.slice(0,2)},
+  async famArchive(d){if(!await ask(`Ta bort ${famName(d.fid)}? Deras länkar spärras. Statistiken finns kvar.`,'Ta bort',true))return;await act('api_family_archive',{p_family:d.fid});closeSheet()},
+  invite(){sheet('invite')},
+  memberMenu(d){sheet('memberMenu',{mid:d.mid})},
+  showLink(d){const m=S.members.find(x=>x.id===d.mid);if(m)sheet('link',{token:m.token,name:parentName(m.fid,m.pid)})},
+  async copyLink(d){try{await navigator.clipboard.writeText(linkUrl(d.t));toast('Länken är kopierad')}catch{const t=$('#linkText');t.focus();t.select();toast('Markerad – kopiera med Ctrl/⌘+C')}},
+  async shareLink(d){try{await navigator.share({title:'Samåk',text:`Hej ${d.name}! Här är din personliga länk till Samåk – vi planerar skjutsar till träningarna där:`,url:linkUrl(d.t)})}catch{}},
+  async role(d){if(await act('api_member_role',{p_member:d.mid,p_role:d.r},d.r==='moderator'?'Moderatorrättigheter givna':'Moderatorrättigheter borttagna'))closeSheet()},
+  async revoke(d){if(!await ask('Spärra länken? Den slutar fungera direkt.','Spärra',true))return;if(await act('api_member_revoke',{p_member:d.mid},'Länken är spärrad'))closeSheet()},
+  sessMenu(d){sheet('sessMenu',{sid:d.sid})},
+  sessEdit(d){sheet('sessEdit',{sid:d.sid})},
+  async sessCancel(d){const s=S.sess[d.sid];await act('api_session_cancel',{p_session:s.id,p_cancel:!s.cancelled},s.cancelled?'Återställd':'Inställd');closeSheet()},
+  async sessDelete(d){const s=S.sess[d.sid];let scope='one';
+    if(s.series_id&&sessList().some(x=>x.series_id===s.series_id&&x.date>s.date)&&await ask('Ta bort även alla senare tillfällen i serien?','Ja, hela resten'))scope='following';
+    else if(!await ask('Ta bort träningen?','Ta bort',true))return;
+    await act('api_session_delete',{p_session:s.id,p_scope:scope},'Borttagen');closeSheet()},
+  import(){S.importRows=null;sheet('importSL')},
+  parseSL(){const t=$('#slText').value;S.importRows=markDup(parseSvenskaLag(t));renderSheet(true);$('#slText').value=t},
+  async doImport(){const rows=S.importRows||[];const pick=[...document.querySelectorAll('[data-imp]')].filter(x=>x.checked).map(x=>rows[Number(x.dataset.imp)]);
+    if(!pick.length){toast('Inget markerat');return}
+    try{const n=await rpc('api_sessions_import',{p_rows:pick});toast(`${n} träning${n===1?'':'ar'} tillagd${n===1?'':'a'}`)}catch{}
+    closeSheet();S.week=monday(pd(pick[0].date));S.view='week';await refresh(true)},
+};
+const FORMS={
+  async chat(){const i=$('#chatIn');const t=i.value.trim();if(!t)return;i.value='';S._scroll=true;await act('api_chat',{p_text:t})},
+  async take(form,fd){const{sid,dir,fid}=form.dataset;const pid=fd.get('pid');if(!pid){toast('Välj vem som kör');return}
+    if(await act('api_driver_set',{p_session:sid,p_dir:dir,p_family:fid,p_parent:pid,p_seats:Number(fd.get('seats'))||0},'Sparat'))sheet('trip',{sid,dir})},
+  async rename(form,fd){if(await act('api_group_rename',{p_name:fd.get('name')}))closeSheet()},
+  async newGroup(form,fd){try{const t=await rpc('api_group_create',{p_name:fd.get('name'),p_child:fd.get('child'),p_parent:fd.get('parent')});addToken(t,fd.get('name'));location.reload()}catch{}},
+  async fam(form,fd){
+    const fid=form.dataset.fid||null;const mod=isMod();
+    const parents=[...form.querySelectorAll('[data-prow]')].map(r=>({id:r.dataset.prow||null,name:r.querySelector('.pname').value.trim(),address:r.querySelector('.paddr').value.trim(),baseline:mod?Number(r.querySelector('.pbase')?.value||0):undefined})).filter(p=>p.name);
+    if(!parents.length){toast('Ange minst en förälder');return}
+    const shared={on:!!fd.get('shared'),odd:{},even:{}};
+    for(const wk of['odd','even'])form.querySelectorAll(`.days[data-wk="${wk}"] [data-day]`).forEach(b=>{if(b.dataset.v)shared[wk][b.dataset.day]=b.dataset.v});
+    if(shared.on&&parents.length<2){toast('Delat boende kräver två föräldrar');return}
+    const defaults={};for(const[k,v]of fd.entries())if(k.startsWith('def_')&&v)defaults[k.slice(4)]=v;
+    const p={id:fid,child:fd.get('child').trim(),address:(fd.get('address')||'').trim(),seats:Number(fd.get('seats'))||0,shared,defaults,parents};
+    if(mod)p.baseline_other=Number(fd.get('baseline_other')||0);
+    if(await act('api_family_save',{p},'Sparat')){
+      if(shared.on&&parents.some(x=>!x.id)){toast('Sparat – öppna igen för att välja dagar för den nya föräldern');}
+      closeSheet()}},
+  async invite(form,fd){
+    const fid=fd.get('fid');let pid=fd.get('pid');
+    if(pid==='__new'){const nm=(fd.get('newName')||'').trim();if(!nm){toast('Skriv förälderns namn');return}
+      const f=S.fam[fid];try{await rpc('api_family_save',{p:{id:fid,parents:[...activeParents(fid).map(x=>({id:x.id,name:x.name,address:x.address,baseline:x.baseline})),{id:null,name:nm,address:'',baseline:0}]}})}catch{return}
+      await refresh(true);pid=activeParents(fid).find(x=>x.name===nm)?.id;if(!pid)return}
+    try{const t=await rpc('api_invite_create',{p_family:fid,p_parent:pid,p_role:fd.get('mod')?'moderator':'member'});await refresh(true);sheet('link',{token:t,name:parentName(fid,pid)})}catch{}},
+  async sess(form,fd){
+    const sid=form.dataset.sid||null;
+    const v={id:sid,title:fd.get('title').trim(),date:fd.get('date'),place:fd.get('place').trim(),gather:fd.get('gather')||'',start:fd.get('start'),end:fd.get('end'),info:fd.get('info').trim()};
+    if(!v.date||!validHM(v.start)||!validHM(v.end)){toast('Ange datum, start- och sluttid');return}
+    if(v.end<=v.start){toast('Sluttiden måste vara efter starttiden');return}
+    if(v.gather&&v.gather>v.start){toast('Samlingen kan inte vara efter starten');return}
+    const until=!sid&&fd.get('repeat')?fd.get('until'):null;
+    if(await act('api_session_save',{p:v,p_scope:fd.get('scope')||'one',p_until:until},'Sparat')){if(!sid)S.week=monday(pd(v.date));closeSheet();render()}},
+};
+document.addEventListener('submit',e=>{const f=e.target.closest('[data-form]');if(!f)return;e.preventDefault();FORMS[f.dataset.form]?.(f,new FormData(f))});
+document.addEventListener('click',e=>{const el=e.target.closest('[data-act]');if(!el||el.tagName==='LABEL')return;e.preventDefault();ACT[el.dataset.act]?.({...el.dataset},el,e)});
+document.addEventListener('change',e=>{const el=e.target.closest('[data-change]');if(!el)return;const k=el.dataset.change;
+  if(k==='acting'){S.acting=el.value;renderSheet(true)}
+  if(k==='prelim'){saveAnswer(el.dataset.sid,actingFid(),{prelim:el.checked})}
+  if(k==='setDriverFam'&&el.value){sheet('take',{sid:el.dataset.sid,dir:el.dataset.dir,fid:el.value})}
+  if(k==='invFam')$('#invParents').innerHTML=invParents(el.value);
+  if(k==='sharedToggle')el.closest('form').classList.toggle('shared',el.checked);
+  if(k==='repeat')$('#repeatBox').hidden=!el.checked;
+  if(k==='icsFile'){const f=el.files[0];if(f)f.text().then(t=>{S.importRows=markDup(parseICS(t));renderSheet(true)})}
+});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&S.sheet)closeSheet()});
+
+/* ================= Start och uppdatering ================= */
+let pollT;
+function schedule(){clearTimeout(pollT);pollT=setTimeout(async()=>{if(document.visibilityState==='visible')await refresh();schedule()},S.view==='chat'?4000:20000)}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')refresh()});
+window.addEventListener('hashchange',()=>{readHashToken();const t=curToken();if(t&&t!==S.token)location.reload()});
+function boot(){
+  readHashToken();S.token=curToken();render();
+  if(S.token&&!SUPABASE_URL.startsWith('__')){refresh(true).then(schedule)}else S.loading=false;
+}
+boot();
+
+</script>
+</body>
+</html>
