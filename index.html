@@ -263,6 +263,7 @@ const fmtLong=s=>{const d=pd(s);return cap(DAYS[d.getDay()])+' '+d.getDate()+' '
 const validHM=s=>/^\d{2}:\d{2}$/.test(s||'');
 const COLORS=['#E4622A','#2B7553','#3C6BB0','#8C4FB0','#B8860B','#C0457A','#1F8A8A','#6A6F2B','#9A5B3C','#4B5DCC'];
 const gen=n=>/[sxz]$/i.test(n)?n:n+'s';
+const genG=n=>/[0-9A-ZÅÄÖ]$/.test(n)?n+':s':gen(n);
 const lsGet=k=>{try{return localStorage.getItem('samak.'+k)}catch{return null}};
 const lsSet=(k,v)=>{try{localStorage.setItem('samak.'+k,v)}catch{}};
 const ICON={
@@ -280,6 +281,8 @@ function tokens(){try{return JSON.parse(lsGet('tokens')||'[]')}catch{return[]}}
 function saveTokens(a){lsSet('tokens',JSON.stringify(a))}
 function addToken(t,name){const a=tokens().filter(x=>x.t!==t);a.unshift({t,name:name||''});saveTokens(a);lsSet('cur',t)}
 function curToken(){const c=lsGet('cur');const a=tokens();return a.some(x=>x.t===c)?c:(a[0]?.t||null)}
+function readHashJoin(){const m=location.hash.match(/^#j=([a-z0-9]{12,40})$/i);if(m){lsSet('join',JSON.stringify({code:m[1].toLowerCase()}));try{history.replaceState(null,'',location.pathname+location.search)}catch{location.hash=''}}}
+function joinState(){try{return JSON.parse(lsGet('join')||'null')}catch{return null}}
 function readHashToken(){const m=location.hash.match(/^#(?:t=)?([a-f0-9]{40,80})$/i);if(m){addToken(m[1].toLowerCase());try{history.replaceState(null,'',location.pathname+location.search)}catch{location.hash=''}}}
 
 /* ================= API (Supabase RPC) ================= */
@@ -291,7 +294,7 @@ const Api={
     return j;
   }
 };
-const ERR={invalid_token:'Länken fungerar inte längre.',not_moderator:'Det kräver moderator.',not_your_family:'Du kan bara ändra för din egen familj.',locked:'Träningen är låst – lås upp först.',need_one_moderator:'Gruppen måste ha minst en moderator.',cannot_revoke_self:'Du kan inte spärra din egen länk.'};
+const ERR={invalid_code:'Inbjudningslänken fungerar inte längre.',request_gone:'Förfrågan är redan hanterad.',too_many_requests:'För många väntande förfrågningar.',invalid_token:'Länken fungerar inte längre.',not_moderator:'Det kräver moderator.',not_your_family:'Du kan bara ändra för din egen familj.',locked:'Träningen är låst – lås upp först.',need_one_moderator:'Gruppen måste ha minst en moderator.',cannot_revoke_self:'Du kan inte spärra din egen länk.'};
 async function rpc(fn,args,{quiet}={}){
   try{const r=await Api.call(fn,{p_token:S.token,...args});return r}
   catch(e){
@@ -303,7 +306,7 @@ async function rpc(fn,args,{quiet}={}){
 async function act(fn,args,okMsg){try{await rpc(fn,args);if(okMsg)toast(okMsg);await refresh(true);return true}catch{await refresh(true);return false}}
 
 /* ================= Tillstånd ================= */
-const S={token:null,raw:null,rawStr:'',loading:true,netErr:false,badToken:false,
+const S={requests:[],join:null,token:null,raw:null,rawStr:'',loading:true,netErr:false,badToken:false,
   me:null,group:null,fam:{},sess:{},ans:{},drv:{},msgs:[],members:[],
   view:'week',week:monday(new Date()),weekChosen:false,sheet:null,importRows:null,acting:null};
 async function refresh(force){
@@ -326,7 +329,7 @@ function load(st){
   S.sess=Object.fromEntries(st.sessions.map(s=>[s.id,s]));
   S.ans=Object.fromEntries(st.answers.map(a=>[a.sid+'__'+a.fid,a]));
   S.drv={};for(const d of st.drivers)(S.drv[d.sid+'__'+d.dir]??=[]).push(d);
-  S.msgs=st.messages;S.members=st.members||[];
+  S.msgs=st.messages;S.members=st.members||[];S.requests=st.requests||[];
   const a=tokens();const i=a.findIndex(x=>x.t===S.token);if(i>=0&&a[i].name!==S.group?.name){a[i].name=S.group?.name||'';saveTokens(a)}
   if(!S.weekChosen){S.weekChosen=true;chooseWeek()}
 }
@@ -436,7 +439,7 @@ function renderTabs(){
   const t=$('#tabs');if(!S.me||S.badToken){t.hidden=true;return}t.hidden=false;
   const seen=Number(lsGet('seen.'+S.group?.id)||0);const n=S.msgs.filter(m=>new Date(m.ts).getTime()>seen&&m.mid!==S.me.member_id).length;
   const tab=(v,ic,l,b)=>`<button class="tab ${S.view===v?'on':''}" data-act="view" data-v="${v}">${ICON[ic]}<span>${l}</span>${b?`<span class="badge">${b>9?'9+':b}</span>`:''}</button>`;
-  t.innerHTML=`<div class="in">${tab('week','week','Vecka')}${tab('chat','chat','Chatt',S.view==='chat'?0:n)}${tab('stats','stat','Statistik')}${tab('group','grp','Grupp')}</div>`;
+  t.innerHTML=`<div class="in">${tab('week','week','Vecka')}${tab('chat','chat','Chatt',S.view==='chat'?0:n)}${tab('stats','stat','Statistik')}${tab('group','grp','Grupp',isMod()?S.requests.length:0)}</div>`;
 }
 function header(){
   const fid=S.me?.family_id;
@@ -445,6 +448,7 @@ function header(){
 }
 function view(){
   if(SUPABASE_URL.startsWith('__'))return header()+`<div class="card box"><h3>Inte installerad än</h3><p class="s">Fyll i SUPABASE_URL och SUPABASE_KEY överst i filen.</p></div>`;
+  if(S.join)return header()+viewJoin();
   if(!S.token)return header()+`<div class="card hero"><h1>Alla åt samma håll.</h1><p class="hint" style="font-size:15px">Samåk planerar skjutsen till lagets träningar.</p></div><div class="card box"><h3>Du behöver en inbjudningslänk</h3><p class="s">Be lagets moderator om din personliga länk och öppna den på den här enheten.</p></div>`;
   if(S.badToken)return header()+`<div class="card box"><h3>Länken fungerar inte längre</h3><p class="s">Den kan ha spärrats eller bytts ut. Be moderatorn om en ny länk.</p>${tokens().length>1?'<div class="sp"></div><button class="btn ghost" data-act="groups">Välj en annan grupp</button>':''}<div class="sp"></div><button class="btn ghost" data-act="forget">Glöm länken på den här enheten</button></div>`;
   if(S.loading)return header()+`<div class="spin"></div><p class="empty">Hämtar…</p>`;
@@ -461,7 +465,7 @@ function viewWeek(){
   let noDrv=0,wait=0,prel=0,total=0;
   for(const s of act)for(const d of['to','from']){if(tripTime(s,d)<now)continue;total++;const st=coverage(s,d).st;if(st==='open'||st==='short')noDrv++;else if(st==='wait')wait++;else if(st==='prelim')prel++}
   let h=`<div class="weekhead"><div><h1>Vecka ${isoWeek(w)}</h1><div class="sub">${range}</div></div>
-   <div class="wnav"><button data-act="wk" data-d="-1" aria-label="Föregående vecka">←</button><button data-act="wk" data-d="0">Idag</button><button data-act="wk" data-d="1" aria-label="Nästa vecka">→</button></div></div>`;
+   <div class="wnav"><button data-act="wk" data-d="-1" aria-label="Föregående vecka">←</button><button data-act="wk" data-d="0">Denna vecka</button><button data-act="wk" data-d="1" aria-label="Nästa vecka">→</button></div></div>`;
   const rs=n=>n===1?'resa':'resor';
   if(total){
     if(noDrv)h+=`<div class="banner warn"><div><b>${noDrv} ${rs(noDrv)} saknar förare</b>${wait?`${wait} ${rs(wait)} väntar dessutom på svar.`:'Tryck på resan för att ta den.'}</div></div>`;
@@ -469,6 +473,7 @@ function viewWeek(){
     else if(prel)h+=`<div class="banner warn"><div><b>${prel} ${rs(prel)} med preliminära svar</b>Klar när svaren är bekräftade.</div></div>`;
     else h+=`<div class="banner ok"><div><b>Alla kommande resor är klara</b>Alla har svarat och alla som behöver skjuts har en förare.</div></div>`;
   }
+  h+=weekNotices();
   const fid=S.me.family_id;
   if(fid&&act.length){
     const cells=act.map(s=>['to','from'].map(d=>{const m=mode(s.id,fid,d);const a=effAnswer(s.id,fid);
@@ -546,7 +551,7 @@ function viewStats(){
       ${f.baseline_other?`<div class="par"><span>Övriga</span><b>${f.baseline_other}</b></div>`:''}
       <div class="bal">Åkt med andra: ${st.rides}</div></div>`;
   }
-  h+=`<p class="hint">Inkluderar startsaldo från WhatsApp-chatten (14/9–12/11 2026). En körning räknas när tiden har passerat. Inställda träningar räknas inte.</p>`;
+  h+=`<p class="hint">En körning räknas när tiden för lämningen eller hämtningen har passerat. Inställda träningar räknas inte.</p>`;
   return h;
 }
 
@@ -570,10 +575,16 @@ function viewGroup(){
         <button class="btn sm ghost" data-act="memberMenu" data-mid="${m.id}">Hantera</button></div>`;
     }
     h+=`</div><p class="hint">Länken är personlig: den som öppnar den är inloggad som den föräldern. Spärra länken om den hamnat fel.</p></div>`;
+    h+=`<div class="sec"><h2>Gemensam inbjudningslänk</h2></div><div class="card box">`;
+    if(S.requests.length){h+=`<h3>Väntar på godkännande (${S.requests.length})</h3><div class="list">`+S.requests.map(q=>`<div class="li"><div class="grow"><div class="t">${esc(q.name)}</div><div class="s">Barn: ${esc(q.fid?childName(q.fid):q.child)}${q.fid?'':' (nytt barn)'}</div></div><button class="btn sm pri" data-act="review" data-id="${q.id}">Granska</button></div>`).join('')+`</div><div class="sp"></div>`}
+    if(S.group.join_code)h+=`<p class="s" style="margin-top:0">Alla med länken kan be om att gå med. Du godkänner varje person innan de kommer in.</p><div class="row"><button class="btn acc" data-act="shareJoin">Dela inbjudan</button><button class="btn ghost" data-act="joinCode" data-a="new">Byt länk</button><button class="btn ghost" data-act="joinCode" data-a="off">Stäng av</button></div>`;
+    else h+=`<p class="s" style="margin-top:0">En länk som du kan dela i till exempel lagets WhatsApp-grupp. Den som öppnar den skriver sitt namn och väljer barn, och du godkänner.</p><button class="btn ghost" data-act="joinCode" data-a="new">Skapa gemensam länk</button>`;
+    h+=`</div>`;
     const now=isoD(new Date());const up=sessList().filter(s=>s.date>=now);
     h+=`<div class="sec"><h2>Träningar</h2><div class="row"><button class="btn sm ghost" data-act="import">Importera</button><button class="btn sm pri" data-act="sessEdit">+ Lägg till</button></div></div><div class="card box"><div class="list">`;
     h+=up.map(s=>`<div class="li"><div class="grow"><div class="t">${fmtShort(s.date)} · ${esc(s.title)}${s.cancelled?'<span class="tag c">Inställd</span>':''}</div><div class="s">${s.gather?'Samling '+esc(s.gather)+' · ':''}${esc(s.start)}–${esc(s.end)} · ${esc(s.place)}</div></div><button class="dots" data-act="sessMenu" data-sid="${s.id}">${ICON.dots}</button></div>`).join('')||'<p class="hint">Inga kommande träningar.</p>';
     h+=`</div></div>`;
+    h+=`<div class="sec"><h2>Säkerhetskopia</h2></div><div class="card box"><p class="s" style="margin-top:0">Laddar ner all data i gruppen som en fil. Spara den på ett säkert ställe – den innehåller namn, adresser och inloggningslänkar.</p><button class="btn ghost" data-act="backup">Ladda ner säkerhetskopia</button></div>`;
   }
   h+=`<div class="sec"><h2>Den här enheten</h2></div><div class="card box"><div class="row"><button class="btn ghost" data-act="groups">Grupper</button><button class="btn ghost" data-act="forget">Logga ut</button></div><p class="hint">Logga ut tar bort din länk från den här enheten. Du kommer in igen genom att öppna länken.</p></div>`;
   return h;
@@ -690,7 +701,6 @@ const SHEETS={
       <label class="f"><span>Lediga platser i bilen (utöver eget barn)</span><input type="number" name="seats" value="${Number(f.seats??3)}" min="0" max="8"></label>
       <h4>Standardsvar per veckodag</h4><p class="hint" style="margin-top:0">Fylls i automatiskt. Ett svar för en enskild träning gäller före standardsvaret.</p>
       ${(wds.length?wds:[1,2,4]).map(d=>`<div class="defrow"><span>${cap(DAYS[d])}</span><select name="def_${d}">${DEF_OPTS.map(([v,l])=>`<option value="${v}" ${(f.defaults?.[String(d)]||'')===v?'selected':''}>${l}</option>`).join('')}</select></div>`).join('')}
-      ${mod?`<h4>Startsaldo (körningar före Samåk)</h4><p class="hint" style="margin-top:0">Anges per förälder ovan. Körningar som inte kan knytas till någon förälder:</p><label class="f"><span>Övriga</span><input type="number" name="baseline_other" min="0" value="${Number(f.baseline_other||0)}"></label>`:''}
       <div class="sp"></div><div class="row between">${fid&&mod?`<button type="button" class="btn ghost" data-act="famArchive" data-fid="${fid}">Ta bort familj</button>`:'<span></span>'}<button class="btn pri" type="submit">Spara</button></div></form>`;
   },
   invite(){
@@ -700,10 +710,40 @@ const SHEETS={
       <label class="chk"><input type="checkbox" name="mod"><span>Ge moderatorrättigheter</span></label>
       <div class="row end"><button class="btn pri" type="submit">Skapa länk</button></div></form>`;
   },
-  link({token,name}){
-    const url=linkUrl(token);
-    return`<h2>Länk till ${esc(name)}</h2><p class="lead">Skicka den här länken till ${esc(name)} och bara till hen.</p><textarea id="linkText" readonly style="min-height:90px">${esc(url)}</textarea><div class="sp"></div>
-      <div class="row"><button class="btn acc grow" data-act="copyLink" data-t="${token}">Kopiera</button>${navigator.share?`<button class="btn ghost grow" data-act="shareLink" data-t="${token}" data-name="${esc(name)}">Dela…</button>`:''}</div>`;
+  link({token,name,fid}){
+    return`<h2>Inbjudan till ${esc(name)}</h2><p class="lead">Skicka meddelandet till ${esc(name)} och bara till hen – länken loggar in som ${esc(name)}. Du kan ändra texten.</p><textarea id="msgText" style="min-height:300px;font-size:14px">${esc(inviteText(name,fid,linkUrl(token)))}</textarea><div class="sp"></div>
+      <div class="row">${navigator.share?`<button class="btn acc grow" data-act="shareMsg">Dela…</button>`:''}<button class="btn ${navigator.share?'ghost':'acc'} grow" data-act="copyMsg">Kopiera</button></div>`;
+  },
+  joinMsg(){
+    return`<h2>Gemensam inbjudan</h2><p class="lead">Passar att dela i lagets WhatsApp-grupp. Du godkänner alla som anmäler sig. Du kan ändra texten.</p><textarea id="msgText" style="min-height:280px;font-size:14px">${esc(joinText(joinUrl(S.group.join_code)))}</textarea><div class="sp"></div>
+      <div class="row">${navigator.share?`<button class="btn acc grow" data-act="shareMsg">Dela…</button>`:''}<button class="btn ${navigator.share?'ghost':'acc'} grow" data-act="copyMsg">Kopiera</button></div>`;
+  },
+  welcome(){
+    const fid=S.me.family_id;
+    return`<h2>Hej ${esc(myName())}! 👋</h2><p class="lead">Så här funkar Samåk för ${esc(S.group.name)}:</p>
+      <div class="fs"><div class="ttl">1. Fyll i veckan</div><div class="sub" style="margin:0">Svara om ${esc(childName(fid))} är med och om ni kan köra eller behöver skjuts – dit och hem.</div></div>
+      <div class="fs"><div class="ttl">2. Tryck ”Jag kör”</div><div class="sub" style="margin:0">på en resa du kan ta. Då ser alla att den är löst.</div></div>
+      <div class="fs"><div class="ttl">3. Kolla chatten</div><div class="sub" style="margin:0">för frågor och ändringar. När veckan låses kommer en sammanfattning där.</div></div>
+      <p class="hint">Tips: lägg Samåk på hemskärmen via webbläsarens meny (”Installera app” eller ”Lägg till på startskärmen”).</p>
+      <div class="row"><button class="btn acc grow" data-act="welcomeFill">Fyll i veckan</button><button class="btn ghost grow" data-act="close">Senare</button></div>`;
+  },
+  review({id}){
+    const q=S.requests.find(x=>x.id===id);if(!q)return null;
+    const fid=q.fid&&S.fam[q.fid]?q.fid:'';
+    return`<h2>${esc(q.name)} vill gå med</h2><p class="lead">Barn enligt anmälan: <b>${esc(fid?childName(fid):q.child)}</b>${fid?'':' (finns inte i gruppen)'}</p>
+     <form data-form="review" data-id="${id}">
+      <label class="f"><span>Familj</span><select name="fid" data-change="revFam"><option value="">Ny familj</option>${famList().map(f=>`<option value="${f.id}" ${f.id===fid?'selected':''}>${esc(famName(f.id))}</option>`).join('')}</select></label>
+      <div id="revBox">${reviewBox(fid,q)}</div>
+      <label class="chk"><input type="checkbox" name="mod"><span>Ge moderatorrättigheter</span></label>
+      <div class="row between"><button type="button" class="btn ghost" style="color:var(--bad)" data-act="reject" data-id="${id}">Neka</button><button class="btn pri" type="submit">Godkänn</button></div></form>`;
+  },
+  extend(){
+    const ser=seriesEnding();
+    return`<h2>Förläng träningarna</h2><p class="lead">Nya tillfällen läggs till varje vecka efter det sista i serien, med samma tider och plats.</p><form data-form="extend">
+      ${ser.map(x=>`<label class="chk"><input type="checkbox" name="ser" value="${x.id}" checked><span><b>${esc(x.title)}</b><br><span class="hint">${cap(DAYS[pd(x.last).getDay()])}ar · sista ${fmtShort(x.last).toLowerCase()}</span></span></label>`).join('')}
+      <label class="f"><span>Antal veckor</span><input type="number" name="weeks" value="8" min="1" max="26"></label>
+      <p class="hint">Stämmer inte tiderna längre? Ändra dem efteråt under Grupp → Träningar, eller importera från Svenska lag.</p>
+      <div class="row end"><button class="btn pri" type="submit">Förläng</button></div></form>`;
   },
   memberMenu({mid}){
     const m=S.members.find(x=>x.id===mid);if(!m)return null;const nm=parentName(m.fid,m.pid);const self=m.id===S.me.member_id;
@@ -745,7 +785,7 @@ const SHEETS={
   }
 };
 const linkUrl=t=>location.origin+location.pathname+'#t='+t;
-const parentRow=(p,mod)=>`<div style="margin-bottom:10px" data-prow="${p.id||''}" data-key="${Math.random().toString(36).slice(2,8)}"><div class="row"><input type="text" class="pname" style="flex:1" value="${esc(p.name)}" placeholder="Förnamn">${mod?`<input type="number" class="pbase" style="width:76px" min="0" value="${Number(p.baseline||0)}" title="Startsaldo">`:''}<button type="button" class="btn sm ghost" data-act="rmParent" aria-label="Ta bort förälder">✕</button></div>
+const parentRow=(p,mod)=>`<div style="margin-bottom:10px" data-prow="${p.id||''}" data-key="${Math.random().toString(36).slice(2,8)}"><div class="row"><input type="text" class="pname" style="flex:1" value="${esc(p.name)}" placeholder="Förnamn"><button type="button" class="btn sm ghost" data-act="rmParent" aria-label="Ta bort förälder">✕</button></div>
   <input type="text" class="paddr only-shared" style="margin-top:6px" value="${esc(p.address||'')}" placeholder="Adress när barnet är hos ${esc(p.name||'föräldern')}"></div>`;
 const WD=[1,2,3,4,5,6,0];
 function custRow(wk,label,f){
@@ -754,6 +794,93 @@ function custRow(wk,label,f){
     return`<button type="button" data-act="cust" data-day="${d}" data-v="${pid}"><b>${esc(nm.slice(0,2))}</b>${cap(DAYS[d].slice(0,3))}</button>`}).join('')}</div>`;
 }
 function invParents(fid){const ps=activeParents(fid);return`<label class="f"><span>Förälder</span><select name="pid">${ps.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')}<option value="__new">Ny förälder…</option></select></label><label class="f"><span>Namn om ny förälder</span><input type="text" name="newName" placeholder="Förnamn"></label>`}
+
+/* ================= Inbjudan, välkomst, påminnelser ================= */
+const joinUrl=c=>location.origin+location.pathname+'#j='+c;
+const INSTALL_TIP='Tips: Samåk fungerar direkt i valfri webbläsare, på både mobil och dator. I mobilen kan du också installera den som en app via webbläsarens meny (”Installera app” eller ”Lägg till på startskärmen”), så hittar du den lätt.';
+function inviteText(name,fid,url){
+  return`Hej ${name}! 👋
+Vi testar Samåk för att planera skjutsarna till ${genG(S.group.name)} träningar, så att vi slipper reda ut allt i WhatsApp.
+
+Så funkar det:
+• Fyll i för veckan om ${childName(fid)} är med, och om ni kan köra eller behöver skjuts.
+• Tryck ”Jag kör” på en resa du kan ta.
+• Allt syns direkt för alla, och det finns en chatt för frågor.
+
+Här är din personliga länk. Den loggar in dig som ${name}, så dela den inte vidare:
+${url}
+
+${INSTALL_TIP}
+/${myName()}`}
+function joinText(url){
+  return`Hej! 👋
+Vi testar Samåk för att planera skjutsarna till ${genG(S.group.name)} träningar, så att vi slipper reda ut allt i WhatsApp.
+
+Så funkar det:
+• Fyll i för veckan om ditt barn är med, och om ni kan köra eller behöver skjuts.
+• Tryck ”Jag kör” på en resa du kan ta.
+• Allt syns direkt för alla, och det finns en chatt för frågor.
+
+Öppna länken, skriv ditt förnamn och välj ditt barn – sedan godkänner jag dig:
+${url}
+
+${INSTALL_TIP}
+/${myName()}`}
+function reviewBox(fid,q){
+  if(!fid)return`<label class="f"><span>Barnets namn</span><input type="text" name="child" value="${esc(q.child||'')}"></label><label class="f"><span>Förälderns förnamn</span><input type="text" name="pname" value="${esc(q.name)}"></label>`;
+  const ps=activeParents(fid);const linked=new Set(S.members.map(m=>m.pid));
+  const match=ps.find(p=>p.name.trim().toLowerCase()===q.name.trim().toLowerCase());
+  return`<label class="f"><span>Förälder</span><select name="pid">${ps.map(p=>`<option value="${p.id}" ${match===p?'selected':''}>${esc(p.name)}${linked.has(p.id)?' (har redan länk)':''}</option>`).join('')}<option value="__new" ${match?'':'selected'}>Ny förälder</option></select></label><label class="f"><span>Namn om ny förälder</span><input type="text" name="pname" value="${esc(q.name)}"></label>`;
+}
+function seriesEnding(){
+  const by={};for(const s of sessList()){if(!s.series_id||s.cancelled)continue;if(!by[s.series_id]||s.date>by[s.series_id].last)by[s.series_id]={id:s.series_id,title:s.title,last:s.date}}
+  const today=isoD(new Date()),lim=isoD(addDays(new Date(),14));
+  return Object.values(by).filter(x=>x.last>=today&&x.last<=lim).sort((a,b)=>a.last.localeCompare(b.last));
+}
+function missingWeek(){
+  const fid=S.me.family_id;if(!fid)return null;const now=new Date();const lim=addDays(monday(now),14);
+  for(const s of sessList()){if(s.cancelled||isLocked(s.id))continue;const d=pd(s.date);if(d>=lim)break;
+    for(const dir of['to','from'])if(tripTime(s,dir)>now&&mode(s.id,fid,dir)==='unk')return s.date}
+  return null;
+}
+function weekNotices(){
+  let h='';
+  if(isMod()&&S.requests.length)h+=`<div class="banner info"><div class="grow"><b>${S.requests.length} ${S.requests.length===1?'person vill':'personer vill'} gå med</b>Granska under Grupp.</div><button class="btn sm pri" data-act="view" data-v="group">Granska</button></div>`;
+  const mw=missingWeek();
+  if(mw)h+=`<div class="banner" style="background:var(--accbg);color:#7A3413"><div class="grow"><b>Ni har inte svarat för vecka ${isoWeek(pd(mw))}</b>Svara så att de andra vet vem som behöver skjuts.</div><button class="btn sm acc" data-act="gotoMissing" data-date="${mw}">Svara</button></div>`;
+  if(isMod()){const ser=seriesEnding();const snooze=Number(lsGet('snoozeExt.'+S.group.id)||0);
+    if(ser.length&&Date.now()>snooze)h+=`<div class="banner warn"><div class="grow"><b>Träningarna tar slut ${fmtShort(ser[ser.length-1].last).toLowerCase()}</b>Förläng serierna så att kommande veckor inte blir tomma.</div><div class="row"><button class="btn sm pri" data-act="extend">Förläng</button><button class="btn sm ghost" data-act="snoozeExtend">Inte nu</button></div></div>`}
+  return h;
+}
+function viewJoin(){
+  const j=S.join;
+  if(j.status==='pending')return`<div class="card box"><h3>Tack ${esc(j.name||'')}! Väntar på godkännande</h3><p class="s">Moderatorn har fått din förfrågan. Den här sidan loggar in dig automatiskt när du är godkänd – du kan stänga den och öppna samma länk igen senare.</p><div class="spin" style="margin:20px auto"></div><button class="btn ghost" data-act="joinCancel">Avbryt</button></div>`;
+  if(j.status==='rejected')return`<div class="card box"><h3>Förfrågan godkändes inte</h3><p class="s">Hör av dig till lagets moderator om det blivit fel.</p><button class="btn ghost" data-act="joinCancel">Stäng</button></div>`;
+  if(j.error)return`<div class="card box"><h3>Inbjudningslänken fungerar inte</h3><p class="s">Den kan ha bytts ut eller stängts av. Be moderatorn om en ny länk.</p><button class="btn ghost" data-act="joinCancel">Stäng</button></div>`;
+  if(!j.info)return`<div class="spin"></div><p class="empty">Hämtar…</p>`;
+  return`<div class="card hero"><h1>Välkommen till ${esc(j.info.group)}</h1><p class="hint" style="font-size:15px">Samåk planerar skjutsarna till lagets träningar. Fyll i nedan så godkänner moderatorn dig.</p></div>
+   <div class="card box" id="joinForm"><label class="f"><span>Ditt förnamn</span><input type="text" name="name" autocomplete="given-name"></label>
+    <label class="f"><span>Ditt barn</span><select name="fid" data-change="joinFam"><option value="">Välj…</option>${j.info.children.map(c=>`<option value="${c.id}">${esc(c.child)}</option>`).join('')}<option value="__new">Annat barn (finns inte i listan)</option></select></label>
+    <label class="f" id="joinChild" hidden><span>Barnets namn</span><input type="text" name="child"></label>
+    <button class="btn acc block" data-act="joinSend">Skicka</button></div>`;
+}
+let joinT;
+async function pollJoin(){
+  clearTimeout(joinT);const j=S.join;if(!j?.secret)return;
+  try{const r=await Api.call('api_join_status',{p_secret:j.secret});
+    if(r.status==='approved'&&r.token){lsSet('join','');addToken(r.token,r.group);location.reload();return}
+    if(r.status==='rejected'){S.join={...j,status:'rejected'};lsSet('join','');render();return}
+    if(r.status==='unknown'){S.join={...j,status:null,secret:null,error:true};lsSet('join','');render();return}
+  }catch{}
+  joinT=setTimeout(pollJoin,8000);
+}
+async function startJoin(){
+  const j=joinState();if(!j?.code)return false;
+  S.join={code:j.code,secret:j.secret||null,status:j.secret?'pending':null};render();
+  if(j.secret){pollJoin();return true}
+  try{S.join.info=await Api.call('api_join_info',{p_code:j.code})}catch{S.join.error=true;lsSet('join','')}
+  render();return true;
+}
 
 /* ================= Svenska lag / ICS ================= */
 const SL_DATE=/^(?:(måndag|tisdag|onsdag|torsdag|fredag|lördag|söndag)\s+)?(\d{1,2})\s+(jan|feb|mar|apr|maj|jun|jul|aug|sep|okt|nov|dec)[a-zåäö]*\.?\s*(\d{4})?\s*,?\s*(?:kl\.?\s*)?(\d{1,2})[:.](\d{2})\s*[-–—]\s*(\d{1,2})[:.](\d{2})/i;
@@ -839,7 +966,28 @@ const ACT={
   async famArchive(d){if(!await ask(`Ta bort ${famName(d.fid)}? Deras länkar spärras. Statistiken finns kvar.`,'Ta bort',true))return;await act('api_family_archive',{p_family:d.fid});closeSheet()},
   invite(){sheet('invite')},
   memberMenu(d){sheet('memberMenu',{mid:d.mid})},
-  showLink(d){const m=S.members.find(x=>x.id===d.mid);if(m)sheet('link',{token:m.token,name:parentName(m.fid,m.pid)})},
+  showLink(d){const m=S.members.find(x=>x.id===d.mid);if(m)sheet('link',{token:m.token,name:parentName(m.fid,m.pid),fid:m.fid})},
+  async copyMsg(){const t=$('#msgText').value;try{await navigator.clipboard.writeText(t);toast('Meddelandet är kopierat')}catch{const el=$('#msgText');el.focus();el.select();toast('Markerat – kopiera med Ctrl/⌘+C')}},
+  async shareMsg(){try{await navigator.share({text:$('#msgText').value})}catch{}},
+  welcomeFill(){closeSheet();setTimeout(()=>ACT.fill(),250)},
+  shareJoin(){sheet('joinMsg')},
+  async joinCode(d){if(d.a==='off'&&!await ask('Stänga av den gemensamma länken? Den slutar fungera direkt.','Stäng av',true))return;
+    if(d.a==='new'&&S.group.join_code&&!await ask('Byta länk? Den gamla slutar fungera direkt.','Byt länk'))return;
+    if(await act('api_join_code',{p_action:d.a},d.a==='off'?'Länken är avstängd':'Ny länk skapad')&&d.a==='new')sheet('joinMsg')},
+  review(d){sheet('review',{id:d.id})},
+  async reject(d){if(!await ask('Neka förfrågan?','Neka',true))return;if(await act('api_join_reject',{p_request:d.id},'Nekad'))closeSheet()},
+  extend(){sheet('extend')},
+  snoozeExtend(){lsSet('snoozeExt.'+S.group.id,String(Date.now()+3*864e5));render()},
+  gotoMissing(d){S.week=monday(pd(d.date));render();window.scrollTo(0,0);ACT.fill()},
+  backup(){const data={exported:new Date().toISOString(),group:S.group,state:JSON.parse(S.rawStr||'{}')};
+    const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+    a.download=`samak-sakerhetskopia-${isoD(new Date())}.json`;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000);toast('Säkerhetskopian laddas ner')},
+  async joinSend(){const f=$('#joinForm');const name=f.querySelector('[name=name]').value.trim();const sel=f.querySelector('[name=fid]').value;const child=f.querySelector('[name=child]').value.trim();
+    if(!name){toast('Skriv ditt förnamn');return}if(!sel){toast('Välj barn');return}if(sel==='__new'&&!child){toast('Skriv barnets namn');return}
+    try{const sec=await Api.call('api_join_request',{p_code:S.join.code,p_name:name,p_child:sel==='__new'?child:'',p_family:sel==='__new'?null:sel});
+      S.join={...S.join,secret:sec,status:'pending'};lsSet('join',JSON.stringify({code:S.join.code,secret:sec}));render();pollJoin()}
+    catch(e){toast(ERR[e.code]||('Kunde inte skicka: '+e.message))}},
+  joinCancel(){lsSet('join','');S.join=null;location.reload()},
   async copyLink(d){try{await navigator.clipboard.writeText(linkUrl(d.t));toast('Länken är kopierad')}catch{const t=$('#linkText');t.focus();t.select();toast('Markerad – kopiera med Ctrl/⌘+C')}},
   async shareLink(d){try{await navigator.share({title:'Samåk',text:`Hej ${d.name}! Här är din personliga länk till Samåk – vi planerar skjutsar till träningarna där:`,url:linkUrl(d.t)})}catch{}},
   async role(d){if(await act('api_member_role',{p_member:d.mid,p_role:d.r},d.r==='moderator'?'Moderatorrättigheter givna':'Moderatorrättigheter borttagna'))closeSheet()},
@@ -866,14 +1014,13 @@ const FORMS={
   async newGroup(form,fd){try{const t=await rpc('api_group_create',{p_name:fd.get('name'),p_child:fd.get('child'),p_parent:fd.get('parent')});addToken(t,fd.get('name'));location.reload()}catch{}},
   async fam(form,fd){
     const fid=form.dataset.fid||null;const mod=isMod();
-    const parents=[...form.querySelectorAll('[data-prow]')].map(r=>({id:r.dataset.prow||null,name:r.querySelector('.pname').value.trim(),address:r.querySelector('.paddr').value.trim(),baseline:mod?Number(r.querySelector('.pbase')?.value||0):undefined})).filter(p=>p.name);
+    const parents=[...form.querySelectorAll('[data-prow]')].map(r=>({id:r.dataset.prow||null,name:r.querySelector('.pname').value.trim(),address:r.querySelector('.paddr').value.trim()})).filter(p=>p.name);
     if(!parents.length){toast('Ange minst en förälder');return}
     const shared={on:!!fd.get('shared'),odd:{},even:{}};
     for(const wk of['odd','even'])form.querySelectorAll(`.days[data-wk="${wk}"] [data-day]`).forEach(b=>{if(b.dataset.v)shared[wk][b.dataset.day]=b.dataset.v});
     if(shared.on&&parents.length<2){toast('Delat boende kräver två föräldrar');return}
     const defaults={};for(const[k,v]of fd.entries())if(k.startsWith('def_')&&v)defaults[k.slice(4)]=v;
     const p={id:fid,child:fd.get('child').trim(),address:(fd.get('address')||'').trim(),seats:Number(fd.get('seats'))||0,shared,defaults,parents};
-    if(mod)p.baseline_other=Number(fd.get('baseline_other')||0);
     if(await act('api_family_save',{p},'Sparat')){
       if(shared.on&&parents.some(x=>!x.id)){toast('Sparat – öppna igen för att välja dagar för den nya föräldern');}
       closeSheet()}},
@@ -882,7 +1029,15 @@ const FORMS={
     if(pid==='__new'){const nm=(fd.get('newName')||'').trim();if(!nm){toast('Skriv förälderns namn');return}
       const f=S.fam[fid];try{await rpc('api_family_save',{p:{id:fid,parents:[...activeParents(fid).map(x=>({id:x.id,name:x.name,address:x.address,baseline:x.baseline})),{id:null,name:nm,address:'',baseline:0}]}})}catch{return}
       await refresh(true);pid=activeParents(fid).find(x=>x.name===nm)?.id;if(!pid)return}
-    try{const t=await rpc('api_invite_create',{p_family:fid,p_parent:pid,p_role:fd.get('mod')?'moderator':'member'});await refresh(true);sheet('link',{token:t,name:parentName(fid,pid)})}catch{}},
+    try{const t=await rpc('api_invite_create',{p_family:fid,p_parent:pid,p_role:fd.get('mod')?'moderator':'member'});await refresh(true);sheet('link',{token:t,name:parentName(fid,pid),fid})}catch{}},
+  async review(form,fd){const id=form.dataset.id;const q=S.requests.find(x=>x.id===id);if(!q)return;
+    const fid=fd.get('fid')||null;const pid=fd.get('pid');const pname=(fd.get('pname')||'').trim();const child=(fd.get('child')||'').trim();
+    if(!fid&&!child){toast('Skriv barnets namn');return}
+    if((!pid||pid==='__new')&&!pname){toast('Skriv förälderns namn');return}
+    if(await act('api_join_approve',{p_request:id,p_family:fid,p_child:child,p_parent:pid&&pid!=='__new'?pid:null,p_parent_name:pname,p_role:fd.get('mod')?'moderator':'member'},`${pname||q.name} är godkänd – inloggningen sker automatiskt`))closeSheet()},
+  async extend(form,fd){const ids=fd.getAll('ser');if(!ids.length){toast('Välj minst en serie');return}
+    try{const n=await rpc('api_series_extend',{p_series:ids,p_weeks:Number(fd.get('weeks'))||8});toast(`${n} träningar tillagda`)}catch{}
+    closeSheet();await refresh(true)},
   async sess(form,fd){
     const sid=form.dataset.sid||null;
     const v={id:sid,title:fd.get('title').trim(),date:fd.get('date'),place:fd.get('place').trim(),gather:fd.get('gather')||'',start:fd.get('start'),end:fd.get('end'),info:fd.get('info').trim()};
@@ -899,6 +1054,8 @@ document.addEventListener('change',e=>{const el=e.target.closest('[data-change]'
   if(k==='prelim'){saveAnswer(el.dataset.sid,actingFid(),{prelim:el.checked})}
   if(k==='setDriverFam'&&el.value){sheet('take',{sid:el.dataset.sid,dir:el.dataset.dir,fid:el.value})}
   if(k==='invFam')$('#invParents').innerHTML=invParents(el.value);
+  if(k==='revFam'){const q=S.requests.find(x=>x.id===el.closest('form').dataset.id);$('#revBox').innerHTML=reviewBox(el.value,q)}
+  if(k==='joinFam'){$('#joinChild').hidden=el.value!=='__new'}
   if(k==='sharedToggle')el.closest('form').classList.toggle('shared',el.checked);
   if(k==='repeat')$('#repeatBox').hidden=!el.checked;
   if(k==='icsFile'){const f=el.files[0];if(f)f.text().then(t=>{S.importRows=markDup(parseICS(t));renderSheet(true)})}
@@ -909,12 +1066,16 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'&&S.sheet)closeSheet(
 let pollT;
 function schedule(){clearTimeout(pollT);pollT=setTimeout(async()=>{if(document.visibilityState==='visible')await refresh();schedule()},S.view==='chat'?4000:20000)}
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')refresh()});
-window.addEventListener('hashchange',()=>{readHashToken();const t=curToken();if(t&&t!==S.token)location.reload()});
+window.addEventListener('hashchange',()=>{readHashToken();readHashJoin();if(joinState()?.code){location.reload();return}const t=curToken();if(t&&t!==S.token)location.reload()});
 function boot(){
-  readHashToken();S.token=curToken();render();
-  if(S.token&&!SUPABASE_URL.startsWith('__')){refresh(true).then(schedule)}else S.loading=false;
+  readHashToken();readHashJoin();S.token=curToken();
+  if(!SUPABASE_URL.startsWith('__')&&joinState()?.code){startJoin();return}
+  render();
+  if(S.token&&!SUPABASE_URL.startsWith('__')){refresh(true).then(()=>{schedule();maybeWelcome()})}else{S.loading=false;render()}
 }
+function maybeWelcome(){if(!S.me||S.sheet)return;const k='welcomed.'+S.me.member_id;if(lsGet(k))return;lsSet(k,'1');sheet('welcome')}
 boot();
+
 if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}))}
 
 </script>
