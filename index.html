@@ -8,6 +8,8 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Samåk">
 <meta name="robots" content="noindex">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
 <title>Samåk</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2317262B'/%3E%3Ccircle cx='46' cy='42' r='7' fill='%23E4622A'/%3E%3Ctext x='10' y='42' font-family='Arial' font-weight='800' font-size='30' fill='%23fff'%3Es%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -913,6 +915,7 @@ function boot(){
   if(S.token&&!SUPABASE_URL.startsWith('__')){refresh(true).then(schedule)}else S.loading=false;
 }
 boot();
+if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}))}
 
 </script>
 </body>
