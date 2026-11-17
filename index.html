@@ -586,7 +586,7 @@ function viewGroup(){
     h+=`</div></div>`;
     h+=`<div class="sec"><h2>Säkerhetskopia</h2></div><div class="card box"><p class="s" style="margin-top:0">Laddar ner all data i gruppen som en fil. Spara den på ett säkert ställe – den innehåller namn, adresser och inloggningslänkar.</p><button class="btn ghost" data-act="backup">Ladda ner säkerhetskopia</button></div>`;
   }
-  h+=`<div class="sec"><h2>Den här enheten</h2></div><div class="card box"><div class="row"><button class="btn ghost" data-act="groups">Grupper</button><button class="btn ghost" data-act="forget">Logga ut</button></div><p class="hint">Logga ut tar bort din länk från den här enheten. Du kommer in igen genom att öppna länken.</p></div>`;
+  h+=`<div class="sec"><h2>Den här enheten</h2></div><div class="card box"><div class="row"><button class="btn ghost" data-act="myLink">Visa min länk</button><button class="btn ghost" data-act="groups">Grupper</button><button class="btn ghost" data-act="forget">Logga ut</button></div><p class="hint">”Visa min länk” använder du för att logga in på en annan enhet, till exempel datorn. Logga ut tar bort inloggningen från den här enheten – du kommer in igen med din länk.</p></div>`;
   return h;
 }
 
@@ -713,6 +713,11 @@ const SHEETS={
   link({token,name,fid}){
     return`<h2>Inbjudan till ${esc(name)}</h2><p class="lead">Skicka meddelandet till ${esc(name)} och bara till hen – länken loggar in som ${esc(name)}. Du kan ändra texten.</p><textarea id="msgText" style="min-height:300px;font-size:14px">${esc(inviteText(name,fid,linkUrl(token)))}</textarea><div class="sp"></div>
       <div class="row">${navigator.share?`<button class="btn acc grow" data-act="shareMsg">Dela…</button>`:''}<button class="btn ${navigator.share?'ghost':'acc'} grow" data-act="copyMsg">Kopiera</button></div>`;
+  },
+  mylink(){
+    return`<h2>Din personliga länk</h2><p class="lead">Öppna den på din dator eller surfplatta för att logga in där som ${esc(myName())}. Dela den inte med någon annan – den som har länken blir inloggad som du.</p>
+      <textarea id="msgText" readonly style="min-height:110px;font-size:14px">${esc(linkUrl(S.token))}</textarea><div class="sp"></div>
+      <div class="row">${navigator.share?`<button class="btn acc grow" data-act="shareMsg">Skicka till mig själv…</button>`:''}<button class="btn ${navigator.share?'ghost':'acc'} grow" data-act="copyMsg">Kopiera</button></div>`;
   },
   joinMsg(){
     return`<h2>Gemensam inbjudan</h2><p class="lead">Passar att dela i lagets WhatsApp-grupp. Du godkänner alla som anmäler sig. Du kan ändra texten.</p><textarea id="msgText" style="min-height:280px;font-size:14px">${esc(joinText(joinUrl(S.group.join_code)))}</textarea><div class="sp"></div>
@@ -857,7 +862,7 @@ function viewJoin(){
   if(j.status==='pending')return`<div class="card box"><h3>Tack ${esc(j.name||'')}! Väntar på godkännande</h3><p class="s">Moderatorn har fått din förfrågan. Den här sidan loggar in dig automatiskt när du är godkänd – du kan stänga den och öppna samma länk igen senare.</p><div class="spin" style="margin:20px auto"></div><button class="btn ghost" data-act="joinCancel">Avbryt</button></div>`;
   if(j.status==='rejected')return`<div class="card box"><h3>Förfrågan godkändes inte</h3><p class="s">Hör av dig till lagets moderator om det blivit fel.</p><button class="btn ghost" data-act="joinCancel">Stäng</button></div>`;
   if(j.error)return`<div class="card box"><h3>Inbjudningslänken fungerar inte</h3><p class="s">Den kan ha bytts ut eller stängts av. Be moderatorn om en ny länk.</p><button class="btn ghost" data-act="joinCancel">Stäng</button></div>`;
-  if(!j.info)return`<div class="spin"></div><p class="empty">Hämtar…</p>`;
+  if(!j.info)return`<div class="spin"></div><p class="empty">Hämtar…</p>${tokens().length?`<button class="btn ghost block" data-act="joinCancel">Avbryt – tillbaka till Samåk</button>`:''}`;
   const sel=j.sel||{};const kid=j.info.children.find(c=>c.id===sel.fid);
   const ps=kid?kid.parents:[];
   const needName=sel.fid==='__new'||sel.pid==='__other'||(kid&&!ps.length);
@@ -870,7 +875,8 @@ function viewJoin(){
     ${kid?`<h4>2. Vem är du?</h4><div class="list">${ps.map(p=>`<button class="btn ${sel.pid===p.id?'pri':'ghost'} block" style="margin-bottom:8px;justify-content:flex-start" data-act="joinPickP" data-pid="${p.id}">${esc(p.name)}</button>`).join('')}
       <button class="btn ${sel.pid==='__other'||!ps.length?'pri':'ghost'} block" style="justify-content:flex-start" data-act="joinPickP" data-pid="__other">${ps.length?'Någon annan':'Jag finns inte i listan'}</button></div>`:''}
     ${needName&&sel.fid?`<label class="f" style="margin-top:12px"><span>Ditt förnamn</span><input type="text" id="joinName" autocomplete="given-name" value="${esc(sel.name||'')}"></label>`:''}
-    ${sel.fid&&(sel.pid||needName)?`<div class="sp"></div><button class="btn acc block" data-act="joinSend">Skicka</button>`:''}</div>`;
+    ${sel.fid&&(sel.pid||needName)?`<div class="sp"></div><button class="btn acc block" data-act="joinSend">Skicka</button>`:''}</div>
+   ${tokens().length?`<button class="btn ghost block" data-act="joinCancel">Avbryt – tillbaka till Samåk</button>`:''}`;
 }
 let joinT;
 async function pollJoin(){
@@ -1001,7 +1007,8 @@ const ACT={
     try{const sec=await Api.call('api_join_request',{p_code:S.join.code,p_name:pid?null:name,p_child:isNew?child:'',p_family:isNew?null:sel.fid,p_parent:pid});S.join.name=shownName;
       S.join={...S.join,secret:sec,status:'pending'};lsSet('join',JSON.stringify({code:S.join.code,secret:sec}));render();pollJoin()}
     catch(e){toast(ERR[e.code]||('Kunde inte skicka: '+e.message))}},
-  joinCancel(){lsSet('join','');S.join=null;location.reload()},
+  joinCancel(){clearTimeout(joinT);lsSet('join','');S.join=null;try{history.replaceState(null,'',location.pathname+location.search)}catch{}location.reload()},
+  myLink(){sheet('mylink')},
   async copyLink(d){try{await navigator.clipboard.writeText(linkUrl(d.t));toast('Länken är kopierad')}catch{const t=$('#linkText');t.focus();t.select();toast('Markerad – kopiera med Ctrl/⌘+C')}},
   async shareLink(d){try{await navigator.share({title:'Samåk',text:`Hej ${d.name}! Här är din personliga länk till Samåk – vi planerar skjutsar till träningarna där:`,url:linkUrl(d.t)})}catch{}},
   async role(d){if(await act('api_member_role',{p_member:d.mid,p_role:d.r},d.r==='moderator'?'Moderatorrättigheter givna':'Moderatorrättigheter borttagna'))closeSheet()},
