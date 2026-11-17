@@ -231,6 +231,14 @@ textarea{min-height:120px;resize:vertical}
   .trip{padding:11px 10px 12px}
   .dirrow{grid-template-columns:1fr}
 }
+.st-auto .drv{background:#E3EEF2;color:#1F4450}
+.kid.m-auto{background:#E3EEF2;border-color:#BFD6DE}
+.kid.m-auto i{background:#3C7F95}
+.kid.m-reserve i{background:#E1B43A}
+.mcell.m-auto{background:#E3EEF2;border-color:#BFD6DE}
+.mcell.m-reserve{background:var(--warnbg);border-color:#EED9A0}
+.seg button.on.v-reserve{background:#E1B43A;color:#3D2C02}
+.link{background:none;border:0;padding:0;cursor:pointer;font:inherit}
 </style>
 </head>
 <body>
@@ -316,7 +324,7 @@ async function refresh(force){
     S.netErr=false;S.loading=false;S.badToken=false;
     const str=JSON.stringify(st);
     if(!force&&str===S.rawStr)return;
-    S.rawStr=str;load(st);render();renderSheet();
+    S.rawStr=str;load(st);render();renderSheet();freezePast();
   }catch(e){
     S.loading=false;
     if(e.code==='invalid_token')S.badToken=true;else S.netErr=true;
@@ -329,7 +337,7 @@ function load(st){
   S.sess=Object.fromEntries(st.sessions.map(s=>[s.id,s]));
   S.ans=Object.fromEntries(st.answers.map(a=>[a.sid+'__'+a.fid,a]));
   S.drv={};for(const d of st.drivers)(S.drv[d.sid+'__'+d.dir]??=[]).push(d);
-  S.msgs=st.messages;S.members=st.members||[];S.requests=st.requests||[];
+  S.msgs=st.messages;S.members=st.members||[];S.requests=st.requests||[];invalidatePlan();
   const a=tokens();const i=a.findIndex(x=>x.t===S.token);if(i>=0&&a[i].name!==S.group?.name){a[i].name=S.group?.name||'';saveTokens(a)}
   if(!S.weekChosen){S.weekChosen=true;chooseWeek()}
 }
@@ -352,34 +360,56 @@ function chooseWeek(){const now=new Date();if(weekSess().some(s=>!s.cancelled&&a
 function actingFid(){if(isMod()&&S.acting&&S.fam[S.acting]&&!S.fam[S.acting].archived)return S.acting;return S.me?.family_id}
 
 /* ================= Logik: svar, resor, statistik ================= */
-const DEF_OPTS=[['','Inget standardsvar'],['no','Deltar ej'],['drive','Kan köra dit och hem'],['need','Behöver skjuts dit och hem'],['drive-need','Kan köra dit, behöver skjuts hem'],['need-drive','Behöver skjuts dit, kan köra hem']];
+const DEF_OPTS=[['','Inget standardsvar'],['no','Deltar ej'],['drive','Kan köra dit och hem'],['reserve','Om det krisar, dit och hem'],['need','Behöver skjuts dit och hem'],['drive-need','Kan köra dit, behöver skjuts hem'],['need-drive','Behöver skjuts dit, kan köra hem']];
 function defAnswer(fid,date){
   const code=S.fam[fid]?.defaults?.[String(pd(date).getDay())];if(!code)return null;
-  const m={no:{att:'no'},drive:{att:'yes',to:'drive',from:'drive'},need:{att:'yes',to:'need',from:'need'},'drive-need':{att:'yes',to:'drive',from:'need'},'need-drive':{att:'yes',to:'need',from:'drive'}}[code];
+  const m={no:{att:'no'},reserve:{att:'yes',to:'reserve',from:'reserve'},drive:{att:'yes',to:'drive',from:'drive'},need:{att:'yes',to:'need',from:'need'},'drive-need':{att:'yes',to:'drive',from:'need'},'need-drive':{att:'yes',to:'need',from:'drive'}}[code];
   return m?{...m,prelim:false,isDefault:true}:null;
 }
 function effAnswer(sid,fid){return S.ans[sid+'__'+fid]||(S.sess[sid]?defAnswer(fid,S.sess[sid].date):null)}
 const drivers=(sid,dir)=>(S.drv[sid+'__'+dir]||[]).filter(d=>S.fam[d.fid]);
-function mode(sid,fid,dir){
-  const a=effAnswer(sid,fid);
-  if(a&&a.att==='no')return'no';
-  if(drivers(sid,dir).some(d=>d.fid===fid))return'driver';
-  return a?.[dir]||'unk';
+function mode(sid,fid,dir){const a=effAnswer(sid,fid);if(a&&a.att==='no')return'no';return a?.[dir]||'unk'}
+function sinceOf(sid,fid,dir){const a=S.ans[sid+'__'+fid];const v=a&&a[dir+'_since'];return v?new Date(v).getTime():Number.MAX_SAFE_INTEGER}
+const driverPid=(fid,date)=>custodian(fid,date)||activeParents(fid)[0]?.id||null;
+const participants=(s,dir)=>famList().map(f=>({fid:f.id,m:mode(s.id,f.id,dir)})).filter(x=>x.m==='drive'||x.m==='reserve'||x.m==='need');
+let PLAN=null;const invalidatePlan=()=>{PLAN=null};
+// Förarval: alla resor i tidsordning. Fastställda förare gäller; annars väljs bland "Kan köra" den som kört minst
+// (lika: den som svarade först), därefter "Om det krisar". Fler förare läggs till tills platserna räcker.
+function getPlan(){
+  if(PLAN)return PLAN;
+  const counts={};for(const f of famList(true))counts[f.id]=(f.baseline_other||0)+f.parents.reduce((n,p)=>n+(p.baseline||0),0);
+  const items=[];for(const s of sessList()){if(s.cancelled)continue;for(const dir of['to','from'])items.push({s,dir,t:tripTime(s,dir).getTime()})}
+  items.sort((a,b)=>a.t-b.t||a.s.id.localeCompare(b.s.id)||(a.dir<b.dir?-1:1));
+  const plan={};
+  for(const it of items){
+    const parts=participants(it.s,it.dir);const stored=drivers(it.s.id,it.dir);
+    const ord=arr=>arr.slice().sort((a,b)=>((counts[a.fid]||0)-(counts[b.fid]||0))||(sinceOf(it.s.id,a.fid,it.dir)-sinceOf(it.s.id,b.fid,it.dir))||a.fid.localeCompare(b.fid));
+    const queue=[...ord(parts.filter(x=>x.m==='drive')),...ord(parts.filter(x=>x.m==='reserve'))].map(x=>({...x,count:counts[x.fid]||0}));
+    let ds=[],fixed=false;
+    if(stored.length){ds=stored;fixed=true}
+    else if(parts.length>=2||parts.some(x=>x.m==='need')){
+      for(const c of queue){const seats=ds.reduce((n,d)=>n+d.seats,0);if(ds.length&&seats>=parts.length-ds.length)break;
+        ds.push({sid:it.s.id,dir:it.dir,fid:c.fid,pid:driverPid(c.fid,it.s.date),seats:famSeats(c.fid),auto:true,reserve:c.m==='reserve'})}
+    }
+    for(const d of ds)counts[d.fid]=(counts[d.fid]||0)+1;
+    plan[it.s.id+'__'+it.dir]={fixed,ds,queue,parts};
+  }
+  return PLAN=plan;
 }
 function coverage(s,dir){
-  const fams=famList();const ds=drivers(s.id,dir);
-  const modes=fams.map(f=>({fid:f.id,m:mode(s.id,f.id,dir),prelim:!!effAnswer(s.id,f.id)?.prelim}));
-  const needers=modes.filter(x=>x.m==='need'),unk=modes.filter(x=>x.m==='unk'),can=modes.filter(x=>x.m==='drive');
-  const prelim=modes.filter(x=>x.prelim&&x.m!=='no');
-  const seats=ds.reduce((n,d)=>n+Math.max(0,Number(d.seats??3)),0);
+  const p=getPlan()[s.id+'__'+dir]||{fixed:false,ds:[],queue:[],parts:[]};
+  const modes=famList().map(f=>{const a=effAnswer(s.id,f.id);const base=mode(s.id,f.id,dir);const dm=p.ds.some(d=>d.fid===f.id);
+    return{fid:f.id,base,m:dm?(p.fixed?'driver':'auto'):base,prelim:!!a?.prelim&&base!=='no',note:a?.note||''}});
+  const riders=p.parts.filter(x=>!p.ds.some(d=>d.fid===x.fid));
+  const unk=modes.filter(x=>x.m==='unk'),prelim=modes.filter(x=>x.prelim);
+  const seats=p.ds.reduce((n,d)=>n+Math.max(0,Number(d.seats??3)),0);
   let st;
-  if(ds.length&&seats>=needers.length)st='ok';
-  else if(ds.length)st='short';
-  else if(needers.length)st='open';
+  if(p.ds.length)st=seats>=riders.length?(p.fixed?'ok':'auto'):'short';
+  else if(p.parts.some(x=>x.m==='need'))st='open';
   else if(unk.length)st='wait';
   else st='none';
-  if((st==='ok'||st==='none')&&prelim.length)st='prelim';
-  return{st,ds,needers,unk,can,prelim,seats,modes};
+  if((st==='ok'||st==='auto'||st==='none')&&prelim.length)st='prelim';
+  return{st,ds:p.ds,fixed:p.fixed,queue:p.queue,riders,needers:riders,unk,prelim,seats,modes};
 }
 const needsAction=st=>st==='open'||st==='short'||st==='prelim';
 const isOddWeek=date=>isoWeek(pd(date))%2===1;
@@ -388,21 +418,24 @@ function addressFor(fid,date){const f=S.fam[fid];if(!f)return'';const c=custodia
 function defaultDriverPid(fid,date){return custodian(fid,date)||(fid===S.me?.family_id?S.me.parent_id:null)||activeParents(fid)[0]?.id||null}
 function computeStats(){
   const now=new Date();const fam={},par={};
-  for(const f of famList(true)){fam[f.id]={drives:(f.baseline_other||0),rides:0,base:0};fam[f.id].base+=f.baseline_other||0;
-    for(const p of f.parents){par[p.id]=p.baseline||0;fam[f.id].drives+=p.baseline||0;fam[f.id].base+=p.baseline||0}}
+  for(const f of famList(true)){fam[f.id]={drives:(f.baseline_other||0),rides:0};for(const p of f.parents){par[p.id]=p.baseline||0;fam[f.id].drives+=p.baseline||0}}
   for(const key of Object.keys(S.drv)){
     const[sid,dir]=key.split('__');const s=S.sess[sid];if(!s||s.cancelled||tripTime(s,dir)>now)continue;
     const ds=drivers(sid,dir);if(!ds.length)continue;
     for(const d of ds){if(!fam[d.fid])continue;fam[d.fid].drives++;if(d.pid)par[d.pid]=(par[d.pid]||0)+1}
-    for(const f of famList(true)){if(ds.some(d=>d.fid===f.id))continue;const a=effAnswer(sid,f.id);if(a&&a.att==='yes'&&a[dir]==='need')fam[f.id].rides++}
+    for(const x of participants(s,dir)){if(!ds.some(d=>d.fid===x.fid)&&fam[x.fid])fam[x.fid].rides++}
   }
   return{fam,par};
 }
-function bestSuggestion(sid,dir){
-  const ds=drivers(sid,dir);const can=famList().map(f=>f.id).filter(id=>mode(sid,id,dir)==='drive'&&!ds.some(d=>d.fid===id));
-  if(!can.length)return null;const st=computeStats().fam;
-  return can.sort((a,b)=>((st[a].drives-st[a].rides)-(st[b].drives-st[b].rides))||st[a].drives-st[b].drives)[0];
+let freezing=false;
+async function freezePast(){
+  if(freezing)return;const now=new Date();const items=[];const plan=getPlan();
+  for(const[key,p]of Object.entries(plan)){if(p.fixed||!p.ds.length)continue;const[sid,dir]=key.split('__');const s=S.sess[sid];if(!s||tripTime(s,dir)>now)continue;
+    for(const d of p.ds)items.push({sid,dir,fid:d.fid,pid:d.pid,seats:d.seats})}
+  if(!items.length)return;freezing=true;
+  try{const n=await Api.call('api_freeze',{p_token:S.token,p_drivers:items});if(n)await refresh(true)}catch{}finally{freezing=false}
 }
+const autoItems=list=>{const out=[];for(const s of list)for(const dir of['to','from']){const c=coverage(s,dir);if(!c.fixed)for(const d of c.ds)out.push({sid:s.id,dir,fid:d.fid,pid:d.pid,seats:d.seats})}return out};
 function lockText(s){const l=s.lock;if(!l)return'';const d=new Date(l.ts);const w=`${d.getDate()} ${MON3[d.getMonth()]} ${pad(d.getHours())}:${pad(d.getMinutes())}`;return l.on?`🔒 Låst av ${esc(l.name||'moderator')} ${w}`:`🔓 Upplåst av ${esc(l.name||'okänd')} ${w}`}
 function weekSummary(){
   const lines=[`📋 ${S.group?.name||''} – vecka ${isoWeek(S.week)} är låst`];
@@ -411,10 +444,10 @@ function weekSummary(){
     lines.push('',`${cap(DAYS[d.getDay()])} ${d.getDate()}/${d.getMonth()+1} · ${s.title}`);
     if(s.cancelled){lines.push('❌ Inställd');continue}
     for(const dir of['to','from']){
-      const c=coverage(s,dir);const kids=c.needers.map(x=>childName(x.fid));
+      const c=coverage(s,dir);const kids=c.riders.map(x=>childName(x.fid));
       let t;
       if(c.ds.length)t=`${c.ds.map(x=>parentName(x.fid,x.pid)).join(' + ')} kör${kids.length?' (med '+kids.join(', ')+')':''}${c.st==='short'?' ⚠️ för få platser':''}`;
-      else if(kids.length)t=`❗ förare saknas (${kids.join(', ')})`;
+      else if(c.st==='open')t=`❗ förare saknas (${kids.join(', ')})`;
       else if(c.unk.length)t=`inga svar från ${c.unk.map(x=>childName(x.fid)).join(', ')}`;
       else t='ingen skjuts behövs';
       if(c.prelim.length)t+=` – preliminärt: ${c.prelim.map(x=>childName(x.fid)).join(', ')}`;
@@ -422,6 +455,8 @@ function weekSummary(){
     }
     const no=famList().filter(f=>mode(s.id,f.id,'to')==='no').map(f=>f.child);
     if(no.length)lines.push(`Deltar ej: ${no.join(', ')}`);
+    const notes=famList().map(f=>({f,n:effAnswer(s.id,f.id)?.note})).filter(x=>x.n);
+    for(const x of notes)lines.push(`💬 ${x.f.child}: ${x.n}`);
   }
   return lines.join('\n');
 }
@@ -476,8 +511,8 @@ function viewWeek(){
   h+=weekNotices();
   const fid=S.me.family_id;
   if(fid&&act.length){
-    const cells=act.map(s=>['to','from'].map(d=>{const m=mode(s.id,fid,d);const a=effAnswer(s.id,fid);
-      const lab={driver:'Kör ✓',drive:'Kan köra',need:'Behöver skjuts',no:'Deltar ej',unk:'Ej svarat'}[m];
+    const cells=act.map(s=>['to','from'].map(d=>{const m=coverage(s,d).modes.find(x=>x.fid===fid)?.m||mode(s.id,fid,d);const a=effAnswer(s.id,fid);
+      const lab={driver:'Kör ✓',auto:'På tur',drive:'Kan köra',reserve:'Om det krisar',need:'Behöver skjuts',no:'Deltar ej',unk:'Ej svarat'}[m];
       return`<button class="mcell m-${m}${a?.prelim?' m-maybe':''}" data-act="fill"><small>${fmtShort(s.date).split(' ')[0]} ${d==='to'?'dit':'hem'}</small><span>${lab}</span>${a?.prelim?'<span class="std">prel.</span>':''}</button>`}).join('')).join('');
     const unk=act.reduce((n,s)=>n+['to','from'].filter(d=>mode(s.id,fid,d)==='unk').length,0);
     h+=`<div class="card mine"><div class="hd"><div class="av" style="background:${famColor(fid)}">${esc(childName(fid)[0])}</div>
@@ -508,16 +543,17 @@ function tripCell(s,dir){
   const c=coverage(s,dir);const past=tripTime(s,dir)<new Date();
   const t=dir==='to'?`före ${esc(dropTime(s))}`:`efter ${esc(s.end)}`;
   let body;
-  if(c.ds.length)body=c.ds.map(d=>`<div class="drv"><b>${esc(parentName(d.fid,d.pid))} kör</b>${esc(childName(d.fid))} · ${Number(d.seats)} platser${c.st==='ok'?' ✓':''}</div>`).join('')+(c.st==='short'?`<div class="need" style="color:var(--warn);font-weight:600">${c.needers.length-c.seats} plats${c.needers.length-c.seats>1?'er':''} saknas</div>`:'');
-  else if(c.st==='open')body=`<div class="drv"><b>+ Vem kan köra?</b>${c.can.length?`${c.can.length} kan köra`:'Ingen förare än'}</div>`;
+  if(c.ds.length)body=c.ds.map(d=>c.fixed?`<div class="drv"><b>${esc(parentName(d.fid,d.pid))} kör</b>${esc(childName(d.fid))} · ${Number(d.seats)} platser${c.st==='ok'?' ✓':''}</div>`
+      :`<div class="drv"><b>På tur: ${esc(parentName(d.fid,d.pid))}</b>${esc(childName(d.fid))}${d.reserve?' · om det krisar':''} · ${Number(d.seats)} platser</div>`).join('')
+    +(c.st==='short'?`<div class="need" style="color:var(--warn);font-weight:600">${c.riders.length-c.seats} plats${c.riders.length-c.seats>1?'er':''} saknas</div>`:'');
+  else if(c.st==='open')body=`<div class="drv"><b>Förare saknas</b>Ingen har svarat att de kan köra</div>`;
   else if(c.st==='wait')body=`<div class="drv"><b>Väntar på svar</b>${c.unk.length} av ${c.modes.length} familjer har inte svarat</div>`;
   else body=`<div class="drv"><b>Ingen skjuts behövs</b></div>`;
-  const kids=c.modes.map(x=>`<span class="kid m-${x.m}${x.prelim?' m-maybe':''}"><i></i>${esc(childName(x.fid))}${x.prelim&&x.m!=='no'?' ?':''}</span>`).join('');
-  const sug=!s.lock?.on&&!past&&['open','short'].includes(c.st)?bestSuggestion(s.id,dir):null;
-  const info=[c.needers.length?`${c.needers.length} behöver skjuts`:'',c.prelim.length?`${c.prelim.length} preliminär${c.prelim.length>1?'a':''}`:''].filter(Boolean).join(' · ');
+  const kids=c.modes.map(x=>`<span class="kid m-${x.m}${x.prelim?' m-maybe':''}"><i></i>${esc(childName(x.fid))}${x.prelim?' ?':''}${x.note?' 💬':''}</span>`).join('');
+  const info=[c.riders.length&&c.ds.length?`${c.riders.length} åker med`:'',c.prelim.length?`${c.prelim.length} preliminär${c.prelim.length>1?'a':''}`:''].filter(Boolean).join(' · ');
   return`<button class="trip st-${c.st==='prelim'?'maybe':c.st}" data-act="trip" data-sid="${s.id}" data-dir="${dir}"${past?' style="opacity:.75"':''}>
     <div class="th"><span>${dir==='to'?'→ Lämning':'← Hämtning'}</span><span>${t}</span></div>${body}
-    ${info?`<div class="need">${info}</div>`:''}${sug?`<div class="sugg">Förslag: ${esc(famName(sug))}</div>`:''}<div class="kids">${kids}</div></button>`;
+    ${info?`<div class="need">${info}</div>`:''}<div class="kids">${kids}</div></button>`;
 }
 
 function viewChat(){
@@ -586,7 +622,7 @@ function viewGroup(){
     h+=`</div></div>`;
     h+=`<div class="sec"><h2>Säkerhetskopia</h2></div><div class="card box"><p class="s" style="margin-top:0">Laddar ner all data i gruppen som en fil. Spara den på ett säkert ställe – den innehåller namn, adresser och inloggningslänkar.</p><button class="btn ghost" data-act="backup">Ladda ner säkerhetskopia</button></div>`;
   }
-  h+=`<div class="sec"><h2>Den här enheten</h2></div><div class="card box"><div class="row"><button class="btn ghost" data-act="myLink">Visa min länk</button><button class="btn ghost" data-act="groups">Grupper</button><button class="btn ghost" data-act="forget">Logga ut</button></div><p class="hint">”Visa min länk” använder du för att logga in på en annan enhet, till exempel datorn. Logga ut tar bort inloggningen från den här enheten – du kommer in igen med din länk.</p></div>`;
+  h+=`<div class="sec"><h2>Den här enheten</h2></div><div class="card box"><div class="row"><button class="btn ghost" data-act="myLink">Visa min länk</button><button class="btn ghost" data-act="groups">Grupper</button><button class="btn ghost" data-act="forget">Logga ut</button></div><p class="hint"><button class="link" data-act="about">Om Samåk</button></p><p class="hint">”Visa min länk” använder du för att logga in på en annan enhet, till exempel datorn. Logga ut tar bort inloggningen från den här enheten – du kommer in igen med din länk.</p></div>`;
   return h;
 }
 
@@ -624,55 +660,73 @@ const SHEETS={
       h+=segBtns(att,[['yes','Deltar'],['no','Deltar ej']],'setAtt',`data-sid="${s.id}"`);
       if(att==='yes'){
         for(const d of['to','from']){
-          const m=mode(s.id,fid,d);const cur=m==='driver'?'drive':m;
-          const n=famList().filter(x=>['drive','driver'].includes(mode(s.id,x.id,d))).length;
+          const cur=mode(s.id,fid,d);const cm=coverage(s,d).modes.find(x=>x.fid===fid)?.m;
+          const n=famList().filter(x=>mode(s.id,x.id,d)==='drive').length;
           h+=`<div class="dirrow"><div class="lbl">${d==='to'?'Lämning':'Hämtning'}<small>${d==='to'?'före '+esc(dropTime(s)):'efter '+esc(s.end)}</small></div><div>
-            ${segBtns(cur,[['drive','Kan köra'],['need','Behöver skjuts']],'setMode',`data-sid="${s.id}" data-dir="${d}"`)}
-            ${m==='driver'?'<div class="hint" style="margin-top:4px">✓ Ni kör den här resan</div>':n===0?'<div class="nudge">Ingen kan köra än.</div>':n===1?'<div class="nudge">En förare finns – fler som kan köra ger bättre fördelning och valmöjlighet.</div>':''}</div></div>`;
+            ${segBtns(cur,[['drive','Kan köra'],['reserve','Om det krisar'],['need','Behöver skjuts']],'setMode',`data-sid="${s.id}" data-dir="${d}"`)}
+            ${cm==='driver'?'<div class="hint" style="margin-top:4px;color:var(--ok);font-weight:600">✓ Ni kör den här resan</div>':cm==='auto'?'<div class="hint" style="margin-top:4px;color:var(--ok);font-weight:600">Ni står på tur att köra</div>':''}
+            ${n===0?'<div class="nudge">Ingen kan köra än.</div>':n===1?'<div class="nudge">En familj kan köra – fler ger bättre fördelning och valmöjlighet.</div>':''}</div></div>`;
         }
+        h+=`<input type="text" class="note" data-change="note" data-sid="${s.id}" maxlength="200" style="margin-top:10px" placeholder="Kommentar (valfritt), t.ex. hinner först 16:45" value="${esc(a?.note||'')}">`;
         h+=`<label class="chk" style="padding-bottom:0"><input type="checkbox" data-change="prelim" data-sid="${s.id}" ${a?.prelim?'checked':''}><span>Preliminärt svar <span class="hint">– vi bekräftar senare</span></span></label>`;
       }
       h+=`</div>`;
     }
-    h+=`<p class="hint">Svaren är fasta om du inte kryssar i ”Preliminärt”. ”Kan köra” betyder att ni kan ta resan – förare blir ni när ni trycker ”Jag kör” på resan.</p><button class="btn pri block" data-act="close">Klar</button>`;
+    h+=`<p class="hint">Svaren är fasta om du inte kryssar i ”Preliminärt”. Föraren väljs automatiskt bland dem som kan köra. <button class="link" data-act="howDriver">ⓘ Hur väljs föraren?</button></p><button class="btn pri block" data-act="close">Klar</button>`;
     return h;
   },
   trip({sid,dir}){
-    const s=S.sess[sid];if(!s)return null;const c=coverage(s,dir);const locked=isLocked(sid);const fid=S.me.family_id;
+    const s=S.sess[sid];if(!s)return null;const c=coverage(s,dir);const locked=isLocked(sid);const past=tripTime(s,dir)<new Date();
     let h=`<h2>${dir==='to'?'Lämning':'Hämtning'} ${fmtShort(s.date).toLowerCase()}</h2><p class="lead">${esc(s.title)} · ${dir==='to'?`på plats före ${esc(dropTime(s))}`:`hämtas efter ${esc(s.end)}`} · ${esc(s.place)}</p>`;
-    if(s.lock)h+=`<div class="banner ${s.lock.on?'info':'warn'}"><div class="grow"><b>${lockText(s)}</b>${s.lock.on?'Svar och förare kan inte ändras.':'Ändringar kan göras – se till att alla får informationen.'}</div>${s.lock.on?`<button class="btn sm ghost" data-act="unlock" data-sid="${sid}">Lås upp</button>`:''}</div>`;
+    if(s.lock)h+=`<div class="banner ${s.lock.on?'info':'warn'}"><div class="grow"><b>${lockText(s)}</b>${s.lock.on?'Svar och förare är fastställda.':'Ändringar kan göras – se till att alla får informationen.'}</div>${s.lock.on?`<button class="btn sm ghost" data-act="unlock" data-sid="${sid}">Lås upp</button>`:''}</div>`;
     h+=`<h4>Förare</h4><div class="list">`;
-    if(!c.ds.length)h+=`<p class="hint" style="margin:0 0 6px">Ingen förare än.</p>`;
-    for(const d of c.ds)h+=`<div class="li"><div class="av" style="background:${famColor(d.fid)}">${esc(parentName(d.fid,d.pid)[0])}</div><div class="grow"><div class="t">${esc(parentName(d.fid,d.pid))} · ${esc(famName(d.fid))}</div><div class="s">${Number(d.seats)} lediga platser</div></div>
-      ${!locked&&canEditFam(d.fid)?`<button class="btn sm ghost" data-act="take" data-sid="${sid}" data-dir="${dir}" data-fid="${d.fid}">Ändra</button>`:''}</div>`;
+    if(!c.ds.length)h+=`<p class="hint" style="margin:0 0 6px">${c.st==='open'?'Ingen har svarat att de kan köra.':'Ingen förare behövs än.'}</p>`;
+    for(const d of c.ds)h+=`<div class="li"><div class="av" style="background:${famColor(d.fid)}">${esc(parentName(d.fid,d.pid)[0])}</div><div class="grow"><div class="t">${esc(parentName(d.fid,d.pid))} · ${esc(famName(d.fid))}</div>
+      <div class="s">${c.fixed?'Fastställd':'På tur'+(d.reserve?' (om det krisar)':'')+' – fastställs när veckan låses eller när resan har passerat'} · ${Number(d.seats)} platser</div></div>
+      ${!locked&&c.fixed&&isMod()?`<button class="btn sm ghost" data-act="take" data-sid="${sid}" data-dir="${dir}" data-fid="${d.fid}">Ändra</button>`:''}</div>`;
     h+=`</div>`;
-    if(!locked){
-      if(fid&&!c.ds.some(d=>d.fid===fid)&&mode(sid,fid,dir)!=='no')h+=`<div class="sp"></div><button class="btn acc block" data-act="take" data-sid="${sid}" data-dir="${dir}" data-fid="${fid}">${ICON.car} Jag kör</button>`;
-      const sug=bestSuggestion(sid,dir);
-      if(sug&&c.st!=='ok')h+=`<p class="hint">Förslag: <b>${esc(famName(sug))}</b> har sagt att de kan köra och står på tur.</p>`;
-      if(isMod()){const others=famList().filter(f=>f.id!==fid&&!c.ds.some(d=>d.fid===f.id)&&mode(sid,f.id,dir)!=='no');
-        if(others.length)h+=`<label class="f" style="margin-top:10px"><span>Sätt förare åt annan familj</span><select data-change="setDriverFam" data-sid="${sid}" data-dir="${dir}"><option value="">Välj familj…</option>${others.map(f=>`<option value="${f.id}">${esc(famName(f.id))}${mode(sid,f.id,dir)==='drive'?' – kan köra':''}</option>`).join('')}</select></label>`}
+    if(c.st==='short')h+=`<p class="hint" style="color:var(--warn)">Platserna räcker inte: ${c.riders.length} ska åka med, ${c.seats} lediga platser. Fler behöver svara ”Kan köra”.</p>`;
+    if(!c.fixed&&c.queue.length){
+      h+=`<h4>Turordning</h4><div class="list">`+c.queue.map((q,i)=>`<div class="li"><div class="av" style="background:${famColor(q.fid)}">${i+1}</div><div class="grow"><div class="t">${esc(famName(q.fid))}</div><div class="s">${q.m==='reserve'?'Om det krisar':'Kan köra'} · ${q.count} körning${q.count===1?'':'ar'}</div></div></div>`).join('')+`</div>`;
     }
-    if(c.st==='short')h+=`<p class="hint" style="color:var(--warn)">Platserna räcker inte: ${c.needers.length} behöver skjuts, ${c.seats} lediga platser.</p>`;
+    h+=`<p class="hint"><button class="link" data-act="howDriver">ⓘ Hur väljs föraren?</button></p>`;
+    if(!locked&&isMod()&&!past){const others=famList().filter(f=>!(c.fixed&&c.ds.some(d=>d.fid===f.id))&&mode(sid,f.id,dir)!=='no');
+      if(others.length)h+=`<label class="f"><span>Moderator: fastställ förare för hand</span><select data-change="setDriverFam" data-sid="${sid}" data-dir="${dir}"><option value="">Välj familj…</option>${others.map(f=>`<option value="${f.id}">${esc(famName(f.id))}</option>`).join('')}</select></label>`}
     h+=`<h4>Barnen</h4><div class="list">`;
     for(const x of c.modes){
-      const lab={driver:'Kör',drive:'Kan köra',need:'Behöver skjuts',no:'Deltar ej',unk:'Har inte svarat'}[x.m]+(x.prelim&&x.m!=='no'?' (preliminärt)':'');
-      const adr=['need','unk','drive'].includes(x.m)?addressFor(x.fid,s.date):'';const cu=custodian(x.fid,s.date);
+      const lab={driver:'Kör',auto:'På tur att köra',drive:'Kan köra',reserve:'Om det krisar',need:'Behöver skjuts',no:'Deltar ej',unk:'Har inte svarat'}[x.m]+(x.prelim?' (preliminärt)':'');
+      const rides=c.riders.some(r=>r.fid===x.fid)||x.m==='unk';const adr=rides?addressFor(x.fid,s.date):'';const cu=custodian(x.fid,s.date);
       h+=`<div class="li" style="flex-wrap:wrap"><span class="kid m-${x.m}${x.prelim?' m-maybe':''}"><i></i>${esc(childName(x.fid))}</span><span class="s grow">${lab}</span>
-        ${adr||cu&&x.m!=='no'?`<div class="addr">📍 ${dir==='to'?'Hämtas':'Lämnas'}: ${adr?esc(adr):'adress saknas'}${cu?' (hos '+esc(parentName(x.fid,cu))+')':''}</div>`:''}</div>`;
+        ${x.note?`<div class="addr">💬 ${esc(x.note)}</div>`:''}
+        ${rides&&(adr||cu)?`<div class="addr">📍 ${dir==='to'?'Hämtas':'Lämnas'}: ${adr?esc(adr):'adress saknas'}${cu?' (hos '+esc(parentName(x.fid,cu))+')':''}</div>`:''}</div>`;
     }
     h+=`</div>`;
     if(!locked&&needsAction(c.st))h+=`<div class="sp"></div><button class="btn ghost block" data-act="askChat" data-sid="${sid}" data-dir="${dir}">Fråga i chatten</button>`;
     return h;
   },
+  howDriver(){
+    return`<h2>Hur väljs föraren?</h2><p class="lead">Ni behöver bara svara – appen väljer föraren.</p>
+      <div class="fs"><div class="sub" style="margin:0;color:var(--ink)">1. Bland dem som svarat <b>Kan köra</b> väljs den familj som kört <b>minst</b>.<br>2. Har flera kört lika mycket väljs den som <b>svarade först</b>.<br>3. Har ingen svarat Kan köra väljs på samma sätt bland <b>Om det krisar</b>.<br>4. Räcker inte platserna läggs nästa på tur till.</div></div>
+      <p class="hint">Föraren står som <b>”På tur”</b> tills den fastställs – när moderatorn låser veckan eller när resan har passerat. Fram till dess kan ordningen ändras om någon annan svarar Kan köra.</p>
+      <p class="hint">Kan du inte köra fast du står på tur? Ändra ditt svar, så väljs nästa. Är veckan redan låst – skriv i chatten.</p>
+      <p class="hint">Vid delat boende kör den förälder som har barnet just den dagen.</p>`;
+  },
+  about(){
+    return`<h2>Om Samåk</h2><p class="lead">Samåk är en enkel webbtjänst för att planera skjutsar till lagets träningar: vem som är med, vem som behöver skjuts och vem som kör.</p>
+      <p class="hint">• <b>Appen</b> är en webbsida som ligger på GitHub Pages (github.com/lokrantz-lang/samak). Koden är öppen men innehåller inga namn eller uppgifter.</p>
+      <p class="hint">• <b>Gruppens uppgifter</b> – familjer, adresser, svar, förare och chatt – sparas i en databas hos Supabase, på servrar i EU (Paris).</p>
+      <p class="hint">• <b>Inloggning</b> sker med personliga länkar – ingen behöver konto eller lösenord. Bara den som har en giltig länk kommer åt gruppens uppgifter, och moderatorn kan spärra en länk när som helst.</p>
+      <p class="hint">• Ingen reklam och ingen besöksstatistik.</p>
+      <p class="hint">• Byggd av Henrik med hjälp av AI (Claude). Frågor? Hör av dig till Henrik.</p>`;
+  },
   take({sid,dir,fid}){
     const f=S.fam[fid];if(!f)return null;const ex=drivers(sid,dir).find(d=>d.fid===fid);
     const defP=ex?.pid||defaultDriverPid(fid,S.sess[sid].date);
-    return`<h2>${ex?'Ändra förare':'Vem kör?'}</h2><p class="lead">${esc(famName(fid))} · ${dir==='to'?'lämning':'hämtning'} ${fmtShort(S.sess[sid].date).toLowerCase()}</p>
+    return`<h2>${ex?'Ändra förare':'Fastställ förare'}</h2><p class="lead">${esc(famName(fid))} · ${dir==='to'?'lämning':'hämtning'} ${fmtShort(S.sess[sid].date).toLowerCase()}</p>
     <form data-form="take" data-sid="${sid}" data-dir="${dir}" data-fid="${fid}">
       ${activeParents(fid).map(p=>`<label class="chk"><input type="radio" name="pid" value="${p.id}" ${p.id===defP?'checked':''}><span>${esc(p.name)}</span></label>`).join('')}
       <label class="f"><span>Lediga platser (utöver ${esc(f.child)})</span><input type="number" name="seats" min="0" max="8" value="${Number(ex?.seats??famSeats(fid))}"></label>
-      <div class="row between">${ex?`<button type="button" class="btn ghost" data-act="drvRemove" data-sid="${sid}" data-dir="${dir}" data-fid="${fid}">Ta bort som förare</button>`:'<span></span>'}<button class="btn acc" type="submit">${ex?'Spara':'Jag kör'}</button></div></form>`;
+      <div class="row between">${ex?`<button type="button" class="btn ghost" data-act="drvRemove" data-sid="${sid}" data-dir="${dir}" data-fid="${fid}">Ta bort som förare</button>`:'<span></span>'}<button class="btn acc" type="submit">${ex?'Spara':'Fastställ'}</button></div></form>`;
   },
   groups(){
     const a=tokens();
@@ -930,10 +984,12 @@ const markDup=rows=>{const ex=sessList();return rows.map(r=>({...r,dup:ex.some(s
 
 /* ================= Åtgärder ================= */
 async function saveAnswer(sid,fid,patch){
-  const a=effAnswer(sid,fid)||{att:'yes',to:null,from:null,prelim:false};
-  const n={att:a.att||'yes',to:a.to||null,from:a.from||null,prelim:!!a.prelim,...patch};
-  S.ans[sid+'__'+fid]={sid,fid,...n};render();renderSheet();
-  await act('api_answer',{p_session:sid,p_family:fid,p_att:n.att,p_to:n.to,p_from:n.from,p_prelim:n.prelim});
+  const a=effAnswer(sid,fid)||{att:'yes',to:null,from:null,prelim:false,note:''};
+  const n={att:a.att||'yes',to:a.to||null,from:a.from||null,prelim:!!a.prelim,note:a.note||'',...patch};
+  const now=new Date().toISOString();const old=S.ans[sid+'__'+fid]||{};
+  const since=d=>(n[d]==='drive'||n[d]==='reserve')?(old[d]===n[d]&&old[d+'_since']?old[d+'_since']:now):null;
+  S.ans[sid+'__'+fid]={sid,fid,...n,to_since:since('to'),from_since:since('from')};invalidatePlan();render();renderSheet();
+  await act('api_answer',{p_session:sid,p_family:fid,p_att:n.att,p_to:n.to,p_from:n.from,p_prelim:n.prelim,p_note:n.note});
 }
 const ACT={
   close:closeSheet,
@@ -948,15 +1004,15 @@ const ACT={
   async forget(){if(!await ask('Logga ut från den här enheten? Du behöver din länk för att komma in igen.','Logga ut',true))return;const a=tokens().filter(x=>x.t!==S.token);saveTokens(a);lsSet('cur',a[0]?.t||'');location.reload()},
   setAtt(d){saveAnswer(d.sid,actingFid(),{att:d.m})},
   async setMode(d){const fid=actingFid();
-    if(drivers(d.sid,d.dir).some(x=>x.fid===fid)&&d.m==='need'){if(!await ask('Ni står som förare för den här resan. Ta bort er som förare?','Ta bort'))return;await act('api_driver_remove',{p_session:d.sid,p_dir:d.dir,p_family:fid})}
+    if(drivers(d.sid,d.dir).some(x=>x.fid===fid)&&d.m!=='drive'){if(!await ask('Ni är fastställda som förare för den här resan. Ta bort er som förare?','Ta bort'))return;await act('api_driver_remove',{p_session:d.sid,p_dir:d.dir,p_family:fid})}
     saveAnswer(d.sid,fid,{att:'yes',[d.dir]:d.m})},
   async copyPrev(){const fid=actingFid();const a=isoD(addDays(S.week,-7)),b=isoD(S.week);const prev=sessList().filter(s=>s.date>=a&&s.date<b);let n=0;
     for(const s of weekSess().filter(s=>!s.cancelled&&!isLocked(s.id))){const p=prev.find(x=>pd(x.date).getDay()===pd(s.date).getDay());const pa=p&&S.ans[p.id+'__'+fid];if(!pa)continue;
-      await saveAnswer(s.id,fid,{att:pa.att,to:pa.to,from:pa.from,prelim:pa.prelim});n++}
+      await saveAnswer(s.id,fid,{att:pa.att,to:pa.to,from:pa.from,prelim:pa.prelim,note:''});n++}
     toast(n?`Kopierade ${n} svar`:'Inga svar förra veckan att kopiera')},
-  take(d){const fid=d.fid;const ex=drivers(d.sid,d.dir).find(x=>x.fid===fid);
-    if(!ex&&activeParents(fid).length===1&&fid===S.me.family_id){act('api_driver_set',{p_session:d.sid,p_dir:d.dir,p_family:fid,p_parent:activeParents(fid)[0].id,p_seats:famSeats(fid)},'Klart – du kör');return}
-    sheet('take',{sid:d.sid,dir:d.dir,fid})},
+  take(d){sheet('take',{sid:d.sid,dir:d.dir,fid:d.fid})},
+  howDriver(){sheet('howDriver')},
+  about(){sheet('about')},
   async drvRemove(d){if(!await ask('Ta bort föraren från resan?','Ta bort',true))return;await act('api_driver_remove',{p_session:d.sid,p_dir:d.dir,p_family:d.fid});sheet('trip',{sid:d.sid,dir:d.dir})},
   async askChat(d){const s=S.sess[d.sid];const c=coverage(s,d.dir);
     await act('api_chat',{p_text:`Vem kan köra ${d.dir==='to'?'lämningen':'hämtningen'} ${fmtShort(s.date).toLowerCase()} (${d.dir==='to'?'före '+dropTime(s):'efter '+s.end})?${c.needers.length?' Behöver skjuts: '+c.needers.map(x=>childName(x.fid)).join(', ')+'.':''}`});
@@ -964,9 +1020,9 @@ const ACT={
   async chatDel(d){if(!await ask('Ta bort meddelandet?','Ta bort',true))return;act('api_chat_delete',{p_id:Number(d.id)})},
   async lockWeek(){const list=weekSess().filter(s=>!s.cancelled&&!isLocked(s.id));if(!list.length)return;
     if(!await ask(`Lås vecka ${isoWeek(S.week)}? Ingen kan ändra svar eller förare förrän någon låser upp. En sammanfattning skickas till chatten.`,'Lås veckan'))return;
-    act('api_lock',{p_sessions:list.map(s=>s.id),p_on:true,p_message:weekSummary()},'Veckan är låst')},
+    act('api_lock',{p_sessions:list.map(s=>s.id),p_on:true,p_message:weekSummary(),p_drivers:autoItems(list)},'Veckan är låst')},
   async lockOne(d){const s=S.sess[d.sid];if(!await ask(`Lås ${fmtShort(s.date).toLowerCase()}?`,'Lås'))return;
-    await act('api_lock',{p_sessions:[s.id],p_on:true,p_message:`🔒 ${myName()} låste ${fmtShort(s.date).toLowerCase()} (${s.title}).`},'Låst');closeSheet()},
+    await act('api_lock',{p_sessions:[s.id],p_on:true,p_message:`🔒 ${myName()} låste ${fmtShort(s.date).toLowerCase()} (${s.title}).`,p_drivers:autoItems([s])},'Låst');closeSheet()},
   async unlock(d){const s=S.sess[d.sid];if(!await ask('Du ansvarar för att alla får information om eventuella ändringar. Ett meddelande skickas till chatten.','Lås upp'))return;
     act('api_lock',{p_sessions:[s.id],p_on:false,p_message:`🔓 ${myName()} låste upp ${fmtShort(s.date).toLowerCase()} (${s.title}). Ändringar kan göras – håll koll här.`},'Upplåst')},
   async unlockWeek(){const list=weekSess().filter(s=>isLocked(s.id));if(!list.length)return;
@@ -1073,6 +1129,7 @@ document.addEventListener('click',e=>{const el=e.target.closest('[data-act]');if
 document.addEventListener('change',e=>{const el=e.target.closest('[data-change]');if(!el)return;const k=el.dataset.change;
   if(k==='acting'){S.acting=el.value;renderSheet(true)}
   if(k==='prelim'){saveAnswer(el.dataset.sid,actingFid(),{prelim:el.checked})}
+  if(k==='note'){const v=el.value.trim();if(v!==(effAnswer(el.dataset.sid,actingFid())?.note||''))saveAnswer(el.dataset.sid,actingFid(),{note:v})}
   if(k==='setDriverFam'&&el.value){sheet('take',{sid:el.dataset.sid,dir:el.dataset.dir,fid:el.value})}
   if(k==='invFam')$('#invParents').innerHTML=invParents(el.value);
   if(k==='revFam'){const q=S.requests.find(x=>x.id===el.closest('form').dataset.id);$('#revBox').innerHTML=reviewBox(el.value,q)}
