@@ -576,7 +576,7 @@ function viewGroup(){
     }
     h+=`</div><p class="hint">Länken är personlig: den som öppnar den är inloggad som den föräldern. Spärra länken om den hamnat fel.</p></div>`;
     h+=`<div class="sec"><h2>Gemensam inbjudningslänk</h2></div><div class="card box">`;
-    if(S.requests.length){h+=`<h3>Väntar på godkännande (${S.requests.length})</h3><div class="list">`+S.requests.map(q=>`<div class="li"><div class="grow"><div class="t">${esc(q.name)}</div><div class="s">Barn: ${esc(q.fid?childName(q.fid):q.child)}${q.fid?'':' (nytt barn)'}</div></div><button class="btn sm pri" data-act="review" data-id="${q.id}">Granska</button></div>`).join('')+`</div><div class="sp"></div>`}
+    if(S.requests.length){h+=`<h3>Väntar på godkännande (${S.requests.length})</h3><div class="list">`+S.requests.map(q=>`<div class="li"><div class="grow"><div class="t">${esc(q.name)}</div><div class="s">Barn: ${esc(q.fid?childName(q.fid):q.child)}${q.fid?'':' (nytt barn)'}${q.pid?' · valde sig själv i listan':' · ny förälder'}</div></div><button class="btn sm pri" data-act="review" data-id="${q.id}">Granska</button></div>`).join('')+`</div><div class="sp"></div>`}
     if(S.group.join_code)h+=`<p class="s" style="margin-top:0">Alla med länken kan be om att gå med. Du godkänner varje person innan de kommer in.</p><div class="row"><button class="btn acc" data-act="shareJoin">Dela inbjudan</button><button class="btn ghost" data-act="joinCode" data-a="new">Byt länk</button><button class="btn ghost" data-act="joinCode" data-a="off">Stäng av</button></div>`;
     else h+=`<p class="s" style="margin-top:0">En länk som du kan dela i till exempel lagets WhatsApp-grupp. Den som öppnar den skriver sitt namn och väljer barn, och du godkänner.</p><button class="btn ghost" data-act="joinCode" data-a="new">Skapa gemensam länk</button>`;
     h+=`</div>`;
@@ -829,7 +829,7 @@ ${INSTALL_TIP}
 function reviewBox(fid,q){
   if(!fid)return`<label class="f"><span>Barnets namn</span><input type="text" name="child" value="${esc(q.child||'')}"></label><label class="f"><span>Förälderns förnamn</span><input type="text" name="pname" value="${esc(q.name)}"></label>`;
   const ps=activeParents(fid);const linked=new Set(S.members.map(m=>m.pid));
-  const match=ps.find(p=>p.name.trim().toLowerCase()===q.name.trim().toLowerCase());
+  const match=ps.find(p=>p.id===q.pid)||ps.find(p=>p.name.trim().toLowerCase()===q.name.trim().toLowerCase());
   return`<label class="f"><span>Förälder</span><select name="pid">${ps.map(p=>`<option value="${p.id}" ${match===p?'selected':''}>${esc(p.name)}${linked.has(p.id)?' (har redan länk)':''}</option>`).join('')}<option value="__new" ${match?'':'selected'}>Ny förälder</option></select></label><label class="f"><span>Namn om ny förälder</span><input type="text" name="pname" value="${esc(q.name)}"></label>`;
 }
 function seriesEnding(){
@@ -858,11 +858,19 @@ function viewJoin(){
   if(j.status==='rejected')return`<div class="card box"><h3>Förfrågan godkändes inte</h3><p class="s">Hör av dig till lagets moderator om det blivit fel.</p><button class="btn ghost" data-act="joinCancel">Stäng</button></div>`;
   if(j.error)return`<div class="card box"><h3>Inbjudningslänken fungerar inte</h3><p class="s">Den kan ha bytts ut eller stängts av. Be moderatorn om en ny länk.</p><button class="btn ghost" data-act="joinCancel">Stäng</button></div>`;
   if(!j.info)return`<div class="spin"></div><p class="empty">Hämtar…</p>`;
-  return`<div class="card hero"><h1>Välkommen till ${esc(j.info.group)}</h1><p class="hint" style="font-size:15px">Samåk planerar skjutsarna till lagets träningar. Fyll i nedan så godkänner moderatorn dig.</p></div>
-   <div class="card box" id="joinForm"><label class="f"><span>Ditt förnamn</span><input type="text" name="name" autocomplete="given-name"></label>
-    <label class="f"><span>Ditt barn</span><select name="fid" data-change="joinFam"><option value="">Välj…</option>${j.info.children.map(c=>`<option value="${c.id}">${esc(c.child)}</option>`).join('')}<option value="__new">Annat barn (finns inte i listan)</option></select></label>
-    <label class="f" id="joinChild" hidden><span>Barnets namn</span><input type="text" name="child"></label>
-    <button class="btn acc block" data-act="joinSend">Skicka</button></div>`;
+  const sel=j.sel||{};const kid=j.info.children.find(c=>c.id===sel.fid);
+  const ps=kid?kid.parents:[];
+  const needName=sel.fid==='__new'||sel.pid==='__other'||(kid&&!ps.length);
+  return`<div class="card hero"><h1>Välkommen till ${esc(j.info.group)}</h1><p class="hint" style="font-size:15px">Samåk planerar skjutsarna till lagets träningar. Välj ditt barn och dig själv, så godkänner moderatorn dig.</p></div>
+   <div class="card box" id="joinForm">
+    <h4 style="margin-top:0">1. Ditt barn</h4>
+    <div class="list">${j.info.children.map(c=>`<button class="btn ${sel.fid===c.id?'pri':'ghost'} block" style="margin-bottom:8px;justify-content:flex-start" data-act="joinPick" data-fid="${c.id}">${esc(c.child)}</button>`).join('')}
+      <button class="btn ${sel.fid==='__new'?'pri':'ghost'} block" style="justify-content:flex-start" data-act="joinPick" data-fid="__new">Annat barn (finns inte i listan)</button></div>
+    ${sel.fid==='__new'?`<label class="f" style="margin-top:12px"><span>Barnets namn</span><input type="text" id="joinChildName" value="${esc(sel.child||'')}"></label>`:''}
+    ${kid?`<h4>2. Vem är du?</h4><div class="list">${ps.map(p=>`<button class="btn ${sel.pid===p.id?'pri':'ghost'} block" style="margin-bottom:8px;justify-content:flex-start" data-act="joinPickP" data-pid="${p.id}">${esc(p.name)}</button>`).join('')}
+      <button class="btn ${sel.pid==='__other'||!ps.length?'pri':'ghost'} block" style="justify-content:flex-start" data-act="joinPickP" data-pid="__other">${ps.length?'Någon annan':'Jag finns inte i listan'}</button></div>`:''}
+    ${needName&&sel.fid?`<label class="f" style="margin-top:12px"><span>Ditt förnamn</span><input type="text" id="joinName" autocomplete="given-name" value="${esc(sel.name||'')}"></label>`:''}
+    ${sel.fid&&(sel.pid||needName)?`<div class="sp"></div><button class="btn acc block" data-act="joinSend">Skicka</button>`:''}</div>`;
 }
 let joinT;
 async function pollJoin(){
@@ -881,6 +889,8 @@ async function startJoin(){
   try{S.join.info=await Api.call('api_join_info',{p_code:j.code})}catch{S.join.error=true;lsSet('join','')}
   render();return true;
 }
+
+function keepJoinInputs(){if(!S.join)return;const sel=S.join.sel||(S.join.sel={});const n=$('#joinName'),c=$('#joinChildName');if(n)sel.name=n.value;if(c)sel.child=c.value}
 
 /* ================= Svenska lag / ICS ================= */
 const SL_DATE=/^(?:(måndag|tisdag|onsdag|torsdag|fredag|lördag|söndag)\s+)?(\d{1,2})\s+(jan|feb|mar|apr|maj|jun|jul|aug|sep|okt|nov|dec)[a-zåäö]*\.?\s*(\d{4})?\s*,?\s*(?:kl\.?\s*)?(\d{1,2})[:.](\d{2})\s*[-–—]\s*(\d{1,2})[:.](\d{2})/i;
@@ -982,9 +992,13 @@ const ACT={
   backup(){const data={exported:new Date().toISOString(),group:S.group,state:JSON.parse(S.rawStr||'{}')};
     const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);
     a.download=`samak-sakerhetskopia-${isoD(new Date())}.json`;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000);toast('Säkerhetskopian laddas ner')},
-  async joinSend(){const f=$('#joinForm');const name=f.querySelector('[name=name]').value.trim();const sel=f.querySelector('[name=fid]').value;const child=f.querySelector('[name=child]').value.trim();
-    if(!name){toast('Skriv ditt förnamn');return}if(!sel){toast('Välj barn');return}if(sel==='__new'&&!child){toast('Skriv barnets namn');return}
-    try{const sec=await Api.call('api_join_request',{p_code:S.join.code,p_name:name,p_child:sel==='__new'?child:'',p_family:sel==='__new'?null:sel});
+  joinPick(d){keepJoinInputs();S.join.sel={...(S.join.sel||{}),fid:d.fid,pid:null};render()},
+  joinPickP(d){keepJoinInputs();S.join.sel={...(S.join.sel||{}),pid:d.pid};render()},
+  async joinSend(){keepJoinInputs();const sel=S.join.sel||{};const isNew=sel.fid==='__new';const pid=sel.pid&&sel.pid!=='__other'?sel.pid:null;
+    const name=(sel.name||'').trim();const child=(sel.child||'').trim();
+    if(!sel.fid){toast('Välj ditt barn');return}if(isNew&&!child){toast('Skriv barnets namn');return}if(!pid&&!name){toast('Skriv ditt förnamn');return}
+    const shownName=pid?(S.join.info.children.find(c=>c.id===sel.fid)?.parents.find(p=>p.id===pid)?.name||''):name;
+    try{const sec=await Api.call('api_join_request',{p_code:S.join.code,p_name:pid?null:name,p_child:isNew?child:'',p_family:isNew?null:sel.fid,p_parent:pid});S.join.name=shownName;
       S.join={...S.join,secret:sec,status:'pending'};lsSet('join',JSON.stringify({code:S.join.code,secret:sec}));render();pollJoin()}
     catch(e){toast(ERR[e.code]||('Kunde inte skicka: '+e.message))}},
   joinCancel(){lsSet('join','');S.join=null;location.reload()},
@@ -1055,7 +1069,7 @@ document.addEventListener('change',e=>{const el=e.target.closest('[data-change]'
   if(k==='setDriverFam'&&el.value){sheet('take',{sid:el.dataset.sid,dir:el.dataset.dir,fid:el.value})}
   if(k==='invFam')$('#invParents').innerHTML=invParents(el.value);
   if(k==='revFam'){const q=S.requests.find(x=>x.id===el.closest('form').dataset.id);$('#revBox').innerHTML=reviewBox(el.value,q)}
-  if(k==='joinFam'){$('#joinChild').hidden=el.value!=='__new'}
+
   if(k==='sharedToggle')el.closest('form').classList.toggle('shared',el.checked);
   if(k==='repeat')$('#repeatBox').hidden=!el.checked;
   if(k==='icsFile'){const f=el.files[0];if(f)f.text().then(t=>{S.importRows=markDup(parseICS(t));renderSheet(true)})}
