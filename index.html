@@ -239,6 +239,14 @@ textarea{min-height:120px;resize:vertical}
 .mcell.m-reserve{background:var(--warnbg);border-color:#EED9A0}
 .seg button.on.v-reserve{background:#E1B43A;color:#3D2C02}
 .link{background:none;border:0;padding:0;cursor:pointer;font:inherit}
+.tag.f{background:#E9ECEC;color:#5A6A6F;font-weight:600;font-size:10.5px;padding:1px 6px;vertical-align:1px}
+.kid .nr{display:inline-grid;place-items:center;min-width:16px;height:16px;border-radius:50%;background:var(--ink);color:#fff;font-size:10px;font-weight:700;padding:0 3px}
+.kid.m-driver .nr,.kid.m-auto .nr{background:var(--ok)}
+.kid.m-reserve .nr{background:#C89B1E}
+.bub-ic{margin-left:2px;cursor:pointer}
+.tipbox{position:absolute;z-index:90;background:var(--ink);color:#fff;font-size:13px;line-height:1.35;padding:8px 11px;border-radius:10px;box-shadow:var(--sh);pointer-events:none}
+.tag.resp-me{background:var(--okbg);color:var(--ok)}
+.tag.resp-other{background:#E9ECEC;color:#4A585D}
 </style>
 </head>
 <body>
@@ -370,7 +378,7 @@ function effAnswer(sid,fid){return S.ans[sid+'__'+fid]||(S.sess[sid]?defAnswer(f
 const drivers=(sid,dir)=>(S.drv[sid+'__'+dir]||[]).filter(d=>S.fam[d.fid]);
 function mode(sid,fid,dir){const a=effAnswer(sid,fid);if(a&&a.att==='no')return'no';return a?.[dir]||'unk'}
 function sinceOf(sid,fid,dir){const a=S.ans[sid+'__'+fid];const v=a&&a[dir+'_since'];return v?new Date(v).getTime():Number.MAX_SAFE_INTEGER}
-const driverPid=(fid,date)=>custodian(fid,date)||activeParents(fid)[0]?.id||null;
+const driverPid=(fid,date,sid,dir)=>{const a=sid&&S.ans[sid+'__'+fid];const p=a&&a[dir+'_pid'];if(p&&activeParents(fid).some(x=>x.id===p))return p;return custodian(fid,date)||activeParents(fid)[0]?.id||null};
 const participants=(s,dir)=>famList().map(f=>({fid:f.id,m:mode(s.id,f.id,dir)})).filter(x=>x.m==='drive'||x.m==='reserve'||x.m==='need');
 let PLAN=null;const invalidatePlan=()=>{PLAN=null};
 // Förarval: alla resor i tidsordning. Fastställda förare gäller; annars väljs bland "Kan köra" den som kört minst
@@ -389,7 +397,7 @@ function getPlan(){
     if(stored.length){ds=stored;fixed=true}
     else if(parts.length>=2||parts.some(x=>x.m==='need')){
       for(const c of queue){const seats=ds.reduce((n,d)=>n+d.seats,0);if(ds.length&&seats>=parts.length-ds.length)break;
-        ds.push({sid:it.s.id,dir:it.dir,fid:c.fid,pid:driverPid(c.fid,it.s.date),seats:famSeats(c.fid),auto:true,reserve:c.m==='reserve'})}
+        ds.push({sid:it.s.id,dir:it.dir,fid:c.fid,pid:driverPid(c.fid,it.s.date,it.s.id,it.dir),seats:famSeats(c.fid),auto:true,reserve:c.m==='reserve'})}
     }
     for(const d of ds)counts[d.fid]=(counts[d.fid]||0)+1;
     plan[it.s.id+'__'+it.dir]={fixed,ds,queue,parts};
@@ -399,7 +407,7 @@ function getPlan(){
 function coverage(s,dir){
   const p=getPlan()[s.id+'__'+dir]||{fixed:false,ds:[],queue:[],parts:[]};
   const modes=famList().map(f=>{const a=effAnswer(s.id,f.id);const base=mode(s.id,f.id,dir);const dm=p.ds.some(d=>d.fid===f.id);
-    return{fid:f.id,base,m:dm?(p.fixed?'driver':'auto'):base,prelim:!!a?.prelim&&base!=='no',note:a?.note||''}});
+    return{fid:f.id,base,m:dm?(p.fixed?'driver':'auto'):base,prelim:!!a?.prelim&&base!=='no',note:(base!=='no'&&a?.[dir+'_note'])||''}});
   const riders=p.parts.filter(x=>!p.ds.some(d=>d.fid===x.fid));
   const unk=modes.filter(x=>x.m==='unk'),prelim=modes.filter(x=>x.prelim);
   const seats=p.ds.reduce((n,d)=>n+Math.max(0,Number(d.seats??3)),0);
@@ -415,6 +423,7 @@ const needsAction=st=>st==='open'||st==='short'||st==='prelim';
 const isOddWeek=date=>isoWeek(pd(date))%2===1;
 function custodian(fid,date){const f=S.fam[fid];if(!f?.shared?.on)return null;const pid=f.shared[isOddWeek(date)?'odd':'even']?.[String(pd(date).getDay())];return f.parents.some(p=>p.id===pid)?pid:null}
 function addressFor(fid,date){const f=S.fam[fid];if(!f)return'';const c=custodian(fid,date);return c?(f.parents.find(p=>p.id===c)?.address||''):(f.address||'')}
+function ownCustody(date){const fid=S.me?.family_id;if(!fid)return null;const cu=custodian(fid,date);if(!cu)return null;return cu===S.me.parent_id?{me:true,name:'du'}:{me:false,name:parentName(fid,cu)}}
 function defaultDriverPid(fid,date){return custodian(fid,date)||(fid===S.me?.family_id?S.me.parent_id:null)||activeParents(fid)[0]?.id||null}
 function computeStats(){
   const now=new Date();const fam={},par={};
@@ -455,8 +464,7 @@ function weekSummary(){
     }
     const no=famList().filter(f=>mode(s.id,f.id,'to')==='no').map(f=>f.child);
     if(no.length)lines.push(`Deltar ej: ${no.join(', ')}`);
-    const notes=famList().map(f=>({f,n:effAnswer(s.id,f.id)?.note})).filter(x=>x.n);
-    for(const x of notes)lines.push(`💬 ${x.f.child}: ${x.n}`);
+    for(const dir of['to','from'])for(const f of famList()){const a=effAnswer(s.id,f.id);const n=a&&a.att!=='no'&&a[dir+'_note'];if(n)lines.push(`💬 ${f.child} (${dir==='to'?'lämning':'hämtning'}): ${n}`)}
   }
   return lines.join('\n');
 }
@@ -512,8 +520,9 @@ function viewWeek(){
   const fid=S.me.family_id;
   if(fid&&act.length){
     const cells=act.map(s=>['to','from'].map(d=>{const m=coverage(s,d).modes.find(x=>x.fid===fid)?.m||mode(s.id,fid,d);const a=effAnswer(s.id,fid);
-      const lab={driver:'Kör ✓',auto:'På tur',drive:'Kan köra',reserve:'Om det krisar',need:'Behöver skjuts',no:'Deltar ej',unk:'Ej svarat'}[m];
-      return`<button class="mcell m-${m}${a?.prelim?' m-maybe':''}" data-act="fill"><small>${fmtShort(s.date).split(' ')[0]} ${d==='to'?'dit':'hem'}</small><span>${lab}</span>${a?.prelim?'<span class="std">prel.</span>':''}</button>`}).join('')).join('');
+      const lab={driver:'Kör ✓',auto:'Kör (förslag)',drive:'Kan köra',reserve:'Om det krisar',need:'Behöver skjuts',no:'Deltar ej',unk:'Ej svarat'}[m];
+      const oc=ownCustody(s.date);
+      return`<button class="mcell m-${m}${a?.prelim?' m-maybe':''}" data-act="fill"><small>${fmtShort(s.date).split(' ')[0]} ${d==='to'?'dit':'hem'}${oc?` · <b style="color:${oc.me?'var(--ok)':'var(--ink2)'}">${esc(oc.name)}</b>`:''}</small><span>${lab}</span>${a?.prelim?'<span class="std">prel.</span>':''}</button>`}).join('')).join('');
     const unk=act.reduce((n,s)=>n+['to','from'].filter(d=>mode(s.id,fid,d)==='unk').length,0);
     h+=`<div class="card mine"><div class="hd"><div class="av" style="background:${famColor(fid)}">${esc(childName(fid)[0])}</div>
       <div class="grow"><div class="t">${esc(famName(fid))}</div><div class="s">${unk?unk+' svar saknas':'Alla svar ifyllda'}</div></div>
@@ -534,22 +543,29 @@ function sessCard(s){
   const meta=[s.gather?`Samling <b>${esc(s.gather)}</b>`:'',`${esc(s.start)}–${esc(s.end)}`,esc(s.place)].filter(Boolean).join(' · ');
   return`<article class="card sess ${s.cancelled?'cancel':''}">
    <div class="shead"><div class="date"><b>${d.getDate()}</b><span>${MON3[d.getMonth()].toUpperCase()}</span></div>
-    <div class="grow"><h3>${cap(DAYS[d.getDay()])} · ${esc(s.title)}${s.cancelled?'<span class="tag c">Inställd</span>':''}${s.lock?.on&&!s.cancelled?' 🔒':''}</h3><div class="meta">${meta}</div>${s.info?`<div class="info">${esc(s.info)}</div>`:''}</div>
+    <div class="grow"><h3>${cap(DAYS[d.getDay()])} · ${esc(s.title)}${s.cancelled?'<span class="tag c">Inställd</span>':''}${s.lock?.on&&!s.cancelled?' 🔒':''}${(()=>{const c=ownCustody(s.date);return c&&!s.cancelled?`<span class="tag ${c.me?'resp-me':'resp-other'}">${c.me?'Du har ansvar':esc(c.name)+' har ansvar'}</span>`:''})()}</h3><div class="meta">${meta}</div>${s.info?`<div class="info">${esc(s.info)}</div>`:''}</div>
     ${isMod()?`<button class="dots" data-act="sessMenu" data-sid="${s.id}" aria-label="Ändra träning">${ICON.dots}</button>`:''}</div>
    ${s.cancelled?'':`<div class="trips">${tripCell(s,'to')}${tripCell(s,'from')}</div>`}
    ${s.lock&&!s.cancelled?`<div class="lockbar ${s.lock.on?'on':'off'}"><span class="grow">${lockText(s)}</span>${s.lock.on?`<button class="btn sm ghost" data-act="unlock" data-sid="${s.id}">Lås upp</button>`:''}</div>`:''}</article>`;
+}
+function chipOrder(c){
+  const nr={};c.ds.forEach((d,i)=>nr[d.fid]=i+1);let n=c.ds.length;for(const q of c.queue)if(!(q.fid in nr))nr[q.fid]=++n;
+  const rank=x=>x.fid in nr?nr[x.fid]:({need:100,unk:200,no:300}[x.m]??150);
+  return c.modes.slice().sort((a,b)=>rank(a)-rank(b)||childName(a.fid).localeCompare(childName(b.fid),'sv')).map(x=>({...x,nr:nr[x.fid]}));
+}
+function chip(x){
+  return`<span class="kid m-${x.m}${x.prelim?' m-maybe':''}">${x.nr?`<b class="nr">${x.nr}</b>`:'<i></i>'}${esc(childName(x.fid))}${x.prelim?' ?':''}${x.note?`<span class="bub-ic" data-act="noteTip" data-text="${esc(childName(x.fid)+': '+x.note)}" title="${esc(x.note)}">💬</span>`:''}</span>`;
 }
 function tripCell(s,dir){
   const c=coverage(s,dir);const past=tripTime(s,dir)<new Date();
   const t=dir==='to'?`före ${esc(dropTime(s))}`:`efter ${esc(s.end)}`;
   let body;
-  if(c.ds.length)body=c.ds.map(d=>c.fixed?`<div class="drv"><b>${esc(parentName(d.fid,d.pid))} kör</b>${esc(childName(d.fid))} · ${Number(d.seats)} platser${c.st==='ok'?' ✓':''}</div>`
-      :`<div class="drv"><b>På tur: ${esc(parentName(d.fid,d.pid))}</b>${esc(childName(d.fid))}${d.reserve?' · om det krisar':''} · ${Number(d.seats)} platser</div>`).join('')
+  if(c.ds.length)body=c.ds.map(d=>`<div class="drv"><b>${esc(parentName(d.fid,d.pid))} kör${c.fixed?(c.st==='ok'?' ✓':''):' <span class="tag f">förslag</span>'}</b>${esc(childName(d.fid))}${d.reserve?' · om det krisar':''} · ${Number(d.seats)} platser</div>`).join('')
     +(c.st==='short'?`<div class="need" style="color:var(--warn);font-weight:600">${c.riders.length-c.seats} plats${c.riders.length-c.seats>1?'er':''} saknas</div>`:'');
   else if(c.st==='open')body=`<div class="drv"><b>Förare saknas</b>Ingen har svarat att de kan köra</div>`;
   else if(c.st==='wait')body=`<div class="drv"><b>Väntar på svar</b>${c.unk.length} av ${c.modes.length} familjer har inte svarat</div>`;
   else body=`<div class="drv"><b>Ingen skjuts behövs</b></div>`;
-  const kids=c.modes.map(x=>`<span class="kid m-${x.m}${x.prelim?' m-maybe':''}"><i></i>${esc(childName(x.fid))}${x.prelim?' ?':''}${x.note?' 💬':''}</span>`).join('');
+  const kids=chipOrder(c).map(chip).join('');
   const info=[c.riders.length&&c.ds.length?`${c.riders.length} åker med`:'',c.prelim.length?`${c.prelim.length} preliminär${c.prelim.length>1?'a':''}`:''].filter(Boolean).join(' · ');
   return`<button class="trip st-${c.st==='prelim'?'maybe':c.st}" data-act="trip" data-sid="${s.id}" data-dir="${dir}"${past?' style="opacity:.75"':''}>
     <div class="th"><span>${dir==='to'?'→ Lämning':'← Hämtning'}</span><span>${t}</span></div>${body}
@@ -664,15 +680,17 @@ const SHEETS={
           const n=famList().filter(x=>mode(s.id,x.id,d)==='drive').length;
           h+=`<div class="dirrow"><div class="lbl">${d==='to'?'Lämning':'Hämtning'}<small>${d==='to'?'före '+esc(dropTime(s)):'efter '+esc(s.end)}</small></div><div>
             ${segBtns(cur,[['drive','Kan köra'],['reserve','Om det krisar'],['need','Behöver skjuts']],'setMode',`data-sid="${s.id}" data-dir="${d}"`)}
-            ${cm==='driver'?'<div class="hint" style="margin-top:4px;color:var(--ok);font-weight:600">✓ Ni kör den här resan</div>':cm==='auto'?'<div class="hint" style="margin-top:4px;color:var(--ok);font-weight:600">Ni står på tur att köra</div>':''}
-            ${n===0?'<div class="nudge">Ingen kan köra än.</div>':n===1?'<div class="nudge">En familj kan köra – fler ger bättre fördelning och valmöjlighet.</div>':''}</div></div>`;
+            ${(cur==='drive'||cur==='reserve')&&S.fam[fid]?.shared?.on&&activeParents(fid).length>1?(()=>{const sel=driverPid(fid,s.date,s.id,d);
+              return`<div class="row" style="margin-top:6px;gap:6px"><span class="hint">Kör:</span>${activeParents(fid).map(p=>`<button type="button" class="btn sm ${p.id===sel?'pri':'ghost'}" data-act="setPid" data-sid="${s.id}" data-dir="${d}" data-pid="${p.id}">${esc(p.name)}</button>`).join('')}</div>`})():''}
+            ${cm==='driver'?'<div class="hint" style="margin-top:4px;color:var(--ok);font-weight:600">✓ Ni kör den här resan</div>':cm==='auto'?'<div class="hint" style="margin-top:4px;color:var(--ok);font-weight:600">Ni är förslag som förare</div>':''}
+            ${n===0?'<div class="nudge">Ingen kan köra än.</div>':n===1?'<div class="nudge">En familj kan köra – fler ger bättre fördelning och valmöjlighet.</div>':''}
+            <input type="text" class="note" data-change="note" data-sid="${s.id}" data-dir="${d}" maxlength="200" style="margin-top:6px;padding:7px 10px;font-size:13.5px" placeholder="Kommentar ${d==='to'?'lämning':'hämtning'} (valfritt)" value="${esc(a?.[d+'_note']||'')}"></div></div>`;
         }
-        h+=`<input type="text" class="note" data-change="note" data-sid="${s.id}" maxlength="200" style="margin-top:10px" placeholder="Kommentar (valfritt), t.ex. hinner först 16:45" value="${esc(a?.note||'')}">`;
         h+=`<label class="chk" style="padding-bottom:0"><input type="checkbox" data-change="prelim" data-sid="${s.id}" ${a?.prelim?'checked':''}><span>Preliminärt svar <span class="hint">– vi bekräftar senare</span></span></label>`;
       }
       h+=`</div>`;
     }
-    h+=`<p class="hint">Svaren är fasta om du inte kryssar i ”Preliminärt”. Föraren väljs automatiskt bland dem som kan köra. <button class="link" data-act="howDriver">ⓘ Hur väljs föraren?</button></p><button class="btn pri block" data-act="close">Klar</button>`;
+    h+=`<p class="hint">Svaren är fasta om du inte kryssar i ”Preliminärt”. Föraren väljs automatiskt bland dem som kan köra. <button class="link" data-act="howDriver">ⓘ Hur väljs föraren?</button></p><button class="btn pri block" data-act="close">Stäng – svaren sparas direkt</button>`;
     return h;
   },
   trip({sid,dir}){
@@ -682,7 +700,7 @@ const SHEETS={
     h+=`<h4>Förare</h4><div class="list">`;
     if(!c.ds.length)h+=`<p class="hint" style="margin:0 0 6px">${c.st==='open'?'Ingen har svarat att de kan köra.':'Ingen förare behövs än.'}</p>`;
     for(const d of c.ds)h+=`<div class="li"><div class="av" style="background:${famColor(d.fid)}">${esc(parentName(d.fid,d.pid)[0])}</div><div class="grow"><div class="t">${esc(parentName(d.fid,d.pid))} · ${esc(famName(d.fid))}</div>
-      <div class="s">${c.fixed?'Fastställd':'På tur'+(d.reserve?' (om det krisar)':'')+' – fastställs när veckan låses eller när resan har passerat'} · ${Number(d.seats)} platser</div></div>
+      <div class="s">${c.fixed?'Fastställd':'Förslag'+(d.reserve?' (om det krisar)':'')+' – fastställs när veckan låses eller när resan har passerat'} · ${Number(d.seats)} platser</div></div>
       ${!locked&&c.fixed&&isMod()?`<button class="btn sm ghost" data-act="take" data-sid="${sid}" data-dir="${dir}" data-fid="${d.fid}">Ändra</button>`:''}</div>`;
     h+=`</div>`;
     if(c.st==='short')h+=`<p class="hint" style="color:var(--warn)">Platserna räcker inte: ${c.riders.length} ska åka med, ${c.seats} lediga platser. Fler behöver svara ”Kan köra”.</p>`;
@@ -694,7 +712,7 @@ const SHEETS={
       if(others.length)h+=`<label class="f"><span>Moderator: fastställ förare för hand</span><select data-change="setDriverFam" data-sid="${sid}" data-dir="${dir}"><option value="">Välj familj…</option>${others.map(f=>`<option value="${f.id}">${esc(famName(f.id))}</option>`).join('')}</select></label>`}
     h+=`<h4>Barnen</h4><div class="list">`;
     for(const x of c.modes){
-      const lab={driver:'Kör',auto:'På tur att köra',drive:'Kan köra',reserve:'Om det krisar',need:'Behöver skjuts',no:'Deltar ej',unk:'Har inte svarat'}[x.m]+(x.prelim?' (preliminärt)':'');
+      const lab={driver:'Kör',auto:'Kör (förslag)',drive:'Kan köra',reserve:'Om det krisar',need:'Behöver skjuts',no:'Deltar ej',unk:'Har inte svarat'}[x.m]+(x.prelim?' (preliminärt)':'');
       const rides=c.riders.some(r=>r.fid===x.fid)||x.m==='unk';const adr=rides?addressFor(x.fid,s.date):'';const cu=custodian(x.fid,s.date);
       h+=`<div class="li" style="flex-wrap:wrap"><span class="kid m-${x.m}${x.prelim?' m-maybe':''}"><i></i>${esc(childName(x.fid))}</span><span class="s grow">${lab}</span>
         ${x.note?`<div class="addr">💬 ${esc(x.note)}</div>`:''}
@@ -707,9 +725,9 @@ const SHEETS={
   howDriver(){
     return`<h2>Hur väljs föraren?</h2><p class="lead">Ni behöver bara svara – appen väljer föraren.</p>
       <div class="fs"><div class="sub" style="margin:0;color:var(--ink)">1. Bland dem som svarat <b>Kan köra</b> väljs den familj som kört <b>minst</b>.<br>2. Har flera kört lika mycket väljs den som <b>svarade först</b>.<br>3. Har ingen svarat Kan köra väljs på samma sätt bland <b>Om det krisar</b>.<br>4. Räcker inte platserna läggs nästa på tur till.</div></div>
-      <p class="hint">Föraren står som <b>”På tur”</b> tills den fastställs – när moderatorn låser veckan eller när resan har passerat. Fram till dess kan ordningen ändras om någon annan svarar Kan köra.</p>
-      <p class="hint">Kan du inte köra fast du står på tur? Ändra ditt svar, så väljs nästa. Är veckan redan låst – skriv i chatten.</p>
-      <p class="hint">Vid delat boende kör den förälder som har barnet just den dagen.</p>`;
+      <p class="hint">Föraren visas med etiketten <b>förslag</b> tills den fastställs – när moderatorn låser veckan eller när resan har passerat. Fram till dess kan förslaget ändras om någon annan svarar Kan köra. Siffrorna vid namnen visar turordningen.</p>
+      <p class="hint">Kan du inte köra fast du är förslag? Ändra ditt svar, så väljs nästa. Är veckan redan låst – skriv i chatten.</p>
+      <p class="hint">Vid delat boende kör den förälder som har barnet den dagen, om ni inte väljer annat under ”Kör:”.</p>`;
   },
   about(){
     return`<h2>Om Samåk</h2><p class="lead">Samåk är en enkel webbtjänst för att planera skjutsar till lagets träningar: vem som är med, vem som behöver skjuts och vem som kör.</p>
@@ -984,12 +1002,12 @@ const markDup=rows=>{const ex=sessList();return rows.map(r=>({...r,dup:ex.some(s
 
 /* ================= Åtgärder ================= */
 async function saveAnswer(sid,fid,patch){
-  const a=effAnswer(sid,fid)||{att:'yes',to:null,from:null,prelim:false,note:''};
-  const n={att:a.att||'yes',to:a.to||null,from:a.from||null,prelim:!!a.prelim,note:a.note||'',...patch};
+  const a=effAnswer(sid,fid)||{att:'yes',to:null,from:null,prelim:false};
+  const n={att:a.att||'yes',to:a.to||null,from:a.from||null,prelim:!!a.prelim,to_note:a.to_note||'',from_note:a.from_note||'',to_pid:a.to_pid||null,from_pid:a.from_pid||null,...patch};
   const now=new Date().toISOString();const old=S.ans[sid+'__'+fid]||{};
   const since=d=>(n[d]==='drive'||n[d]==='reserve')?(old[d]===n[d]&&old[d+'_since']?old[d+'_since']:now):null;
   S.ans[sid+'__'+fid]={sid,fid,...n,to_since:since('to'),from_since:since('from')};invalidatePlan();render();renderSheet();
-  await act('api_answer',{p_session:sid,p_family:fid,p_att:n.att,p_to:n.to,p_from:n.from,p_prelim:n.prelim,p_note:n.note});
+  await act('api_answer',{p_session:sid,p_family:fid,p_att:n.att,p_to:n.to,p_from:n.from,p_prelim:n.prelim,p_to_note:n.to_note,p_from_note:n.from_note,p_to_pid:n.to_pid,p_from_pid:n.from_pid});
 }
 const ACT={
   close:closeSheet,
@@ -1008,10 +1026,14 @@ const ACT={
     saveAnswer(d.sid,fid,{att:'yes',[d.dir]:d.m})},
   async copyPrev(){const fid=actingFid();const a=isoD(addDays(S.week,-7)),b=isoD(S.week);const prev=sessList().filter(s=>s.date>=a&&s.date<b);let n=0;
     for(const s of weekSess().filter(s=>!s.cancelled&&!isLocked(s.id))){const p=prev.find(x=>pd(x.date).getDay()===pd(s.date).getDay());const pa=p&&S.ans[p.id+'__'+fid];if(!pa)continue;
-      await saveAnswer(s.id,fid,{att:pa.att,to:pa.to,from:pa.from,prelim:pa.prelim,note:''});n++}
+      await saveAnswer(s.id,fid,{att:pa.att,to:pa.to,from:pa.from,prelim:pa.prelim,to_pid:pa.to_pid||null,from_pid:pa.from_pid||null});n++}
     toast(n?`Kopierade ${n} svar`:'Inga svar förra veckan att kopiera')},
   take(d){sheet('take',{sid:d.sid,dir:d.dir,fid:d.fid})},
   howDriver(){sheet('howDriver')},
+  setPid(d){saveAnswer(d.sid,actingFid(),{[d.dir+'_pid']:d.pid})},
+  noteTip(d,el){document.querySelectorAll('.tipbox').forEach(t=>t.remove());const r=el.getBoundingClientRect();const t=document.createElement('div');t.className='tipbox';t.textContent=d.text;
+    document.body.appendChild(t);const w=Math.min(280,window.innerWidth-24);t.style.maxWidth=w+'px';const left=Math.max(12,Math.min(window.innerWidth-t.offsetWidth-12,r.left+r.width/2-t.offsetWidth/2));
+    t.style.left=left+'px';t.style.top=(window.scrollY+r.top-t.offsetHeight-8)+'px';setTimeout(()=>t.remove(),4500)},
   about(){sheet('about')},
   async drvRemove(d){if(!await ask('Ta bort föraren från resan?','Ta bort',true))return;await act('api_driver_remove',{p_session:d.sid,p_dir:d.dir,p_family:d.fid});sheet('trip',{sid:d.sid,dir:d.dir})},
   async askChat(d){const s=S.sess[d.sid];const c=coverage(s,d.dir);
@@ -1125,11 +1147,11 @@ const FORMS={
     if(await act('api_session_save',{p:v,p_scope:fd.get('scope')||'one',p_until:until},'Sparat')){if(!sid)S.week=monday(pd(v.date));closeSheet();render()}},
 };
 document.addEventListener('submit',e=>{const f=e.target.closest('[data-form]');if(!f)return;e.preventDefault();FORMS[f.dataset.form]?.(f,new FormData(f))});
-document.addEventListener('click',e=>{const el=e.target.closest('[data-act]');if(!el||el.tagName==='LABEL')return;e.preventDefault();ACT[el.dataset.act]?.({...el.dataset},el,e)});
+document.addEventListener('click',e=>{if(!e.target.closest('[data-act="noteTip"]'))document.querySelectorAll('.tipbox').forEach(t=>t.remove());const el=e.target.closest('[data-act]');if(!el||el.tagName==='LABEL')return;e.preventDefault();ACT[el.dataset.act]?.({...el.dataset},el,e)});
 document.addEventListener('change',e=>{const el=e.target.closest('[data-change]');if(!el)return;const k=el.dataset.change;
   if(k==='acting'){S.acting=el.value;renderSheet(true)}
   if(k==='prelim'){saveAnswer(el.dataset.sid,actingFid(),{prelim:el.checked})}
-  if(k==='note'){const v=el.value.trim();if(v!==(effAnswer(el.dataset.sid,actingFid())?.note||''))saveAnswer(el.dataset.sid,actingFid(),{note:v})}
+  if(k==='note'){const f=el.dataset.dir+'_note';const v=el.value.trim();if(v!==(effAnswer(el.dataset.sid,actingFid())?.[f]||''))saveAnswer(el.dataset.sid,actingFid(),{[f]:v})}
   if(k==='setDriverFam'&&el.value){sheet('take',{sid:el.dataset.sid,dir:el.dataset.dir,fid:el.value})}
   if(k==='invFam')$('#invParents').innerHTML=invParents(el.value);
   if(k==='revFam'){const q=S.requests.find(x=>x.id===el.closest('form').dataset.id);$('#revBox').innerHTML=reviewBox(el.value,q)}
