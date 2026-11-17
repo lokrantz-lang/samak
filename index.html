@@ -270,7 +270,10 @@ const cap=s=>s?s[0].toUpperCase()+s.slice(1):s;
 const pad=n=>String(n).padStart(2,'0');
 const isoD=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
 const pd=s=>{const[y,m,d]=String(s).split('-').map(Number);return new Date(y,m-1,d)};
-const at=(date,hm)=>{const d=pd(date);const[h,mi]=String(hm||'00:00').split(':').map(Number);d.setHours(h||0,mi||0,0,0);return d};
+// Alla tider för träningar räknas i svensk tid, oavsett telefonens tidszon
+const tzFmt=(()=>{try{return new Intl.DateTimeFormat('en-US',{timeZone:'Europe/Stockholm',hourCycle:'h23',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'})}catch{return null}})();
+function tzOffsetMs(ms){if(!tzFmt)return -new Date(ms).getTimezoneOffset()*6e4;const p=Object.fromEntries(tzFmt.formatToParts(new Date(ms)).map(x=>[x.type,x.value]));return Date.UTC(+p.year,+p.month-1,+p.day,+p.hour%24,+p.minute,+p.second)-ms}
+const at=(date,hm)=>{const[y,m,d]=String(date).split('-').map(Number);const[h,mi]=String(hm||'00:00').split(':').map(Number);const g=Date.UTC(y,m-1,d,h||0,mi||0);let t=g-tzOffsetMs(g);t=g-tzOffsetMs(t);return new Date(t)};
 const addDays=(d,n)=>{const x=new Date(d);x.setDate(x.getDate()+n);return x};
 const monday=d=>{const x=new Date(d.getFullYear(),d.getMonth(),d.getDate());x.setDate(x.getDate()-((x.getDay()+6)%7));return x};
 const isoWeek=d=>{const t=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));const day=t.getUTCDay()||7;t.setUTCDate(t.getUTCDate()+4-day);const y0=new Date(Date.UTC(t.getUTCFullYear(),0,1));return Math.ceil(((t-y0)/864e5+1)/7)};
@@ -310,7 +313,7 @@ const Api={
     return j;
   }
 };
-const ERR={invalid_code:'Inbjudningslänken fungerar inte längre.',request_gone:'Förfrågan är redan hanterad.',too_many_requests:'För många väntande förfrågningar.',invalid_token:'Länken fungerar inte längre.',not_moderator:'Det kräver moderator.',not_your_family:'Du kan bara ändra för din egen familj.',locked:'Träningen är låst – lås upp först.',need_one_moderator:'Gruppen måste ha minst en moderator.',cannot_revoke_self:'Du kan inte spärra din egen länk.'};
+const ERR={cannot_relink_self:'Använd ”Visa min länk” för din egen länk.',member_gone:'Länken är redan ersatt eller spärrad.',invalid_code:'Inbjudningslänken fungerar inte längre.',request_gone:'Förfrågan är redan hanterad.',too_many_requests:'För många väntande förfrågningar.',invalid_token:'Länken fungerar inte längre.',not_moderator:'Det kräver moderator.',not_your_family:'Du kan bara ändra för din egen familj.',locked:'Träningen är låst – lås upp först.',need_one_moderator:'Gruppen måste ha minst en moderator.',cannot_revoke_self:'Du kan inte spärra din egen länk.'};
 async function rpc(fn,args,{quiet}={}){
   try{const r=await Api.call(fn,{p_token:S.token,...args});return r}
   catch(e){
@@ -331,7 +334,7 @@ async function refresh(force){
     const st=await Api.call('api_state',{p_token:S.token});
     S.netErr=false;S.loading=false;S.badToken=false;
     const str=JSON.stringify(st);
-    if(!force&&str===S.rawStr)return;
+    if(!force&&str===S.rawStr){freezePast();return}
     S.rawStr=str;load(st);render();renderSheet();freezePast();
   }catch(e){
     S.loading=false;
@@ -379,7 +382,7 @@ const drivers=(sid,dir)=>(S.drv[sid+'__'+dir]||[]).filter(d=>S.fam[d.fid]);
 function mode(sid,fid,dir){const a=effAnswer(sid,fid);if(a&&a.att==='no')return'no';return a?.[dir]||'unk'}
 function sinceOf(sid,fid,dir){const a=S.ans[sid+'__'+fid];const v=a&&a[dir+'_since'];return v?new Date(v).getTime():Number.MAX_SAFE_INTEGER}
 const driverPid=(fid,date,sid,dir)=>{const a=sid&&S.ans[sid+'__'+fid];const p=a&&a[dir+'_pid'];if(p&&activeParents(fid).some(x=>x.id===p))return p;return custodian(fid,date)||activeParents(fid)[0]?.id||null};
-const participants=(s,dir)=>famList().map(f=>({fid:f.id,m:mode(s.id,f.id,dir)})).filter(x=>x.m==='drive'||x.m==='reserve'||x.m==='need');
+const participants=(s,dir)=>famList().map(f=>({fid:f.id,m:mode(s.id,f.id,dir)})).filter(x=>x.m==='need'||((x.m==='drive'||x.m==='reserve')&&famSeats(x.fid)>0));
 let PLAN=null;const invalidatePlan=()=>{PLAN=null};
 // Förarval: alla resor i tidsordning. Fastställda förare gäller; annars väljs bland "Kan köra" den som kört minst
 // (lika: den som svarade först), därefter "Om det krisar". Fler förare läggs till tills platserna räcker.
@@ -480,7 +483,7 @@ function render(){
 }
 function renderTabs(){
   const t=$('#tabs');if(!S.me||S.badToken){t.hidden=true;return}t.hidden=false;
-  const seen=Number(lsGet('seen.'+S.group?.id)||0);const n=S.msgs.filter(m=>new Date(m.ts).getTime()>seen&&m.mid!==S.me.member_id).length;
+  const seen=Number(lsGet('seen.'+S.group?.id)||0);const n=S.msgs.filter(m=>new Date(m.ts).getTime()>seen&&m.mid!==S.me.member_id&&m.pid!==S.me.parent_id).length;
   const tab=(v,ic,l,b)=>`<button class="tab ${S.view===v?'on':''}" data-act="view" data-v="${v}">${ICON[ic]}<span>${l}</span>${b?`<span class="badge">${b>9?'9+':b}</span>`:''}</button>`;
   t.innerHTML=`<div class="in">${tab('week','week','Vecka')}${tab('chat','chat','Chatt',S.view==='chat'?0:n)}${tab('stats','stat','Statistik')}${tab('group','grp','Grupp',isMod()?S.requests.length:0)}</div>`;
 }
@@ -505,16 +508,21 @@ function viewWeek(){
   const w=S.week,end=addDays(w,6);
   const range=w.getMonth()===end.getMonth()?`${w.getDate()}–${end.getDate()} ${MONTHS[end.getMonth()]}`:`${w.getDate()} ${MON3[w.getMonth()]} – ${end.getDate()} ${MON3[end.getMonth()]}`;
   const list=weekSess();const act=list.filter(s=>!s.cancelled);const now=new Date();
-  let noDrv=0,wait=0,prel=0,total=0;
-  for(const s of act)for(const d of['to','from']){if(tripTime(s,d)<now)continue;total++;const st=coverage(s,d).st;if(st==='open'||st==='short')noDrv++;else if(st==='wait')wait++;else if(st==='prelim')prel++}
-  let h=`<div class="weekhead"><div><h1>Vecka ${isoWeek(w)}</h1><div class="sub">${range}</div></div>
-   <div class="wnav"><button data-act="wk" data-d="-1" aria-label="Föregående vecka">←</button><button data-act="wk" data-d="0">Denna vecka</button><button data-act="wk" data-d="1" aria-label="Nästa vecka">→</button></div></div>`;
-  const rs=n=>n===1?'resa':'resor';
+  let noDrv=0,missing=0,prel=0,proposals=0,total=0;const unkFam=new Set();
+  for(const s of act)for(const d of['to','from']){if(tripTime(s,d)<now)continue;total++;const c=coverage(s,d);
+    if(c.st==='open')noDrv++;if(c.st==='short')missing++;for(const x of c.unk)unkFam.add(x.fid);
+    if(c.prelim.length)prel++;if(c.ds.length&&!c.fixed)proposals++}
+  const cur=monday(new Date());const diff=Math.round((w-cur)/(7*864e5));
+  const rel=diff===0?'denna vecka':diff===1?'nästa vecka':diff===-1?'förra veckan':diff>1?`om ${diff} veckor`:`för ${-diff} veckor sedan`;
+  let h=`<div class="weekhead"><div><h1>Vecka ${isoWeek(w)}</h1><div class="sub">${range} · <b style="color:${diff===0?'var(--ok)':'var(--ink)'}">${rel}</b></div></div>
+   <div class="wnav"><button data-act="wk" data-d="-1" aria-label="Föregående vecka">←</button>${diff!==0?`<button data-act="wk" data-d="0">Till vecka ${isoWeek(cur)}</button>`:''}<button data-act="wk" data-d="1" aria-label="Nästa vecka">→</button></div></div>`;
+  const rs=n=>n===1?'resa':'resor',fams=n=>n===1?'1 familj':n+' familjer',unk=unkFam.size;
   if(total){
-    if(noDrv)h+=`<div class="banner warn"><div><b>${noDrv} ${rs(noDrv)} saknar förare</b>${wait?`${wait} ${rs(wait)} väntar dessutom på svar.`:'Tryck på resan för att ta den.'}</div></div>`;
-    else if(wait)h+=`<div class="banner warn"><div><b>Väntar på svar</b>${wait} av ${total} kommande ${rs(total)} saknar svar från någon familj.</div></div>`;
-    else if(prel)h+=`<div class="banner warn"><div><b>${prel} ${rs(prel)} med preliminära svar</b>Klar när svaren är bekräftade.</div></div>`;
-    else h+=`<div class="banner ok"><div><b>Alla kommande resor är klara</b>Alla har svarat och alla som behöver skjuts har en förare.</div></div>`;
+    if(noDrv||missing)h+=`<div class="banner warn"><div><b>${[noDrv?`${noDrv} ${rs(noDrv)} saknar förare`:'',missing?`${missing} ${rs(missing)} har för få platser`:''].filter(Boolean).join(' · ')}</b>${unk?`${fams(unk)} har inte svarat.`:'Fler behöver svara Kan köra.'}</div></div>`;
+    else if(unk)h+=`<div class="banner warn"><div><b>Skjuts finns för de anmälda · ${fams(unk)} har inte svarat</b>Förslagen kan ändras när fler svarar.</div></div>`;
+    else if(prel)h+=`<div class="banner warn"><div><b>Skjuts finns för de anmälda · ${prel} ${rs(prel)} med preliminära svar</b>Klart när svaren är bekräftade.</div></div>`;
+    else if(proposals)h+=`<div class="banner ok"><div><b>Alla har svarat och har skjuts</b>Förarna är förslag tills veckan låses.</div></div>`;
+    else h+=`<div class="banner ok"><div><b>Alla resor är klara och fastställda</b></div></div>`;
   }
   h+=weekNotices();
   const fid=S.me.family_id;
@@ -566,7 +574,7 @@ function tripCell(s,dir){
   else if(c.st==='wait')body=`<div class="drv"><b>Väntar på svar</b>${c.unk.length} av ${c.modes.length} familjer har inte svarat</div>`;
   else body=`<div class="drv"><b>Ingen skjuts behövs</b></div>`;
   const kids=chipOrder(c).map(chip).join('');
-  const info=[c.riders.length&&c.ds.length?`${c.riders.length} åker med`:'',c.prelim.length?`${c.prelim.length} preliminär${c.prelim.length>1?'a':''}`:''].filter(Boolean).join(' · ');
+  const info=[c.riders.length&&c.ds.length?`${c.riders.length} åker med`:'',c.ds.length&&c.unk.length?`${c.unk.length} har inte svarat`:'',c.prelim.length?`${c.prelim.length} preliminär${c.prelim.length>1?'a':''}`:''].filter(Boolean).join(' · ');
   return`<button class="trip st-${c.st==='prelim'?'maybe':c.st}" data-act="trip" data-sid="${s.id}" data-dir="${dir}"${past?' style="opacity:.75"':''}>
     <div class="th"><span>${dir==='to'?'→ Lämning':'← Hämtning'}</span><span>${t}</span></div>${body}
     ${info?`<div class="need">${info}</div>`:''}<div class="kids">${kids}</div></button>`;
@@ -580,7 +588,7 @@ function viewChat(){
   for(const m of S.msgs){
     const d=new Date(m.ts);const day=isoD(d);
     if(day!==last){last=day;h+=`<div class="day">${day===isoD(new Date())?'Idag':fmtLong(day)}</div>`}
-    const mine=m.mid===S.me.member_id;
+    const mine=m.mid===S.me.member_id||(m.pid&&m.pid===S.me.parent_id);
     const who=m.fid?`${esc(parentName(m.fid,m.pid))} · ${esc(childName(m.fid))}`:'';
     const canDel=mine||isMod();
     h+=`<div class="msg ${mine?'mine':''}">${mine?'':`<div class="av" style="background:${famColor(m.fid)}">${esc((parentName(m.fid,m.pid)||'?')[0])}</div>`}
@@ -645,14 +653,17 @@ function viewGroup(){
 /* ================= Popuprutor ================= */
 const LIVE=new Set(['trip','fill','memberMenu','sessMenu']);
 function sheet(kind,args={}){S.sheet={kind,args};renderSheet(true)}
-function closeSheet(){const el=$('#sheet');S.sheet=null;el.classList.remove('open');setTimeout(()=>{if(!S.sheet){el.hidden=true;el.innerHTML=''}},220)}
+function closeSheet(){const el=$('#sheet');S.sheet=null;el.classList.remove('open');const o=S._opener;S._opener=null;if(o&&document.contains(o))try{o.focus({preventScroll:true})}catch{}setTimeout(()=>{if(!S.sheet){el.hidden=true;el.innerHTML=''}},220)}
 function renderSheet(first){
   const k=S.sheet;const el=$('#sheet');if(!k)return;
   if(!first&&!LIVE.has(k.kind))return;
+  if(!first&&el.contains(document.activeElement)&&/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)){S._sheetDirty=true;return}
+  S._sheetDirty=false;
   const body=SHEETS[k.kind](k.args);if(body==null){closeSheet();return}
   if(first||!el.querySelector('.pbody')){
     el.innerHTML=`<div class="scrim" data-act="close"></div><div class="panel" role="dialog" aria-modal="true"><div class="xbar"><button class="xbtn" data-act="close" aria-label="Stäng">✕</button></div><div class="grab"></div><div class="pbody">${body}</div></div>`;
-    el.hidden=false;requestAnimationFrame(()=>requestAnimationFrame(()=>el.classList.add('open')));
+    if(first&&!S._opener)S._opener=document.activeElement;
+    el.hidden=false;requestAnimationFrame(()=>requestAnimationFrame(()=>{el.classList.add('open');el.querySelector('.xbtn')?.focus({preventScroll:true})}));
   }else{const p=el.querySelector('.panel');const st=p.scrollTop;el.querySelector('.pbody').innerHTML=body;p.scrollTop=st}
 }
 function ask(msg,ok='OK',danger){return new Promise(res=>{const d=$('#dlg');d.innerHTML=`<div class="scrim"></div><div class="dbox"><p>${esc(msg)}</p><div class="row end"><button class="btn ghost" data-r="0">Avbryt</button><button class="btn ${danger?'danger':'pri'}" data-r="1">${esc(ok)}</button></div></div>`;d.hidden=false;d.onclick=e=>{const b=e.target.closest('[data-r]');if(!b&&!e.target.classList.contains('scrim'))return;d.hidden=true;d.innerHTML='';res(!!b&&b.dataset.r==='1')}})}
@@ -825,7 +836,7 @@ const SHEETS={
   memberMenu({mid}){
     const m=S.members.find(x=>x.id===mid);if(!m)return null;const nm=parentName(m.fid,m.pid);const self=m.id===S.me.member_id;
     return`<h2>${esc(nm)} · ${esc(childName(m.fid))}</h2><p class="lead">${m.role==='moderator'?'Moderator':'Medlem'}${self?' · det här är du':''}</p>
-      <button class="btn pri block" data-act="showLink" data-mid="${m.id}">Visa och dela länken</button><div class="sp"></div>
+      ${self?`<button class="btn pri block" data-act="myLink">Visa min länk</button>`:`<button class="btn pri block" data-act="relink" data-mid="${m.id}">Skicka ny länk</button><p class="hint" style="margin:6px 0 0">Den nuvarande länken slutar då gälla. ${esc(nm)} behöver öppna den nya på sina enheter. Svar, körningar och chatt finns kvar.</p>`}<div class="sp"></div>
       ${m.role==='moderator'?`<button class="btn ghost block" data-act="role" data-mid="${m.id}" data-r="member">Ta bort moderatorrättigheter</button>`:`<button class="btn ghost block" data-act="role" data-mid="${m.id}" data-r="moderator">Gör till moderator</button>`}
       ${self?'':`<div class="sp"></div><button class="btn ghost block" style="color:var(--bad)" data-act="revoke" data-mid="${m.id}">Spärra länken</button>`}
       <p class="hint">Spärrad länk slutar fungera direkt. Skapa en ny länk om personen ska in igen.</p>`;
@@ -932,6 +943,7 @@ function weekNotices(){
 function viewJoin(){
   const j=S.join;
   if(j.status==='pending')return`<div class="card box"><h3>Tack ${esc(j.name||'')}! Väntar på godkännande</h3><p class="s">Moderatorn har fått din förfrågan. Den här sidan loggar in dig automatiskt när du är godkänd – du kan stänga den och öppna samma länk igen senare.</p><div class="spin" style="margin:20px auto"></div><button class="btn ghost" data-act="joinCancel">Avbryt</button></div>`;
+  if(j.status==='expired')return`<div class="card box"><h3>Länken hann gå ut</h3><p class="s">Din förfrågan är för gammal eller godkändes för mer än ett dygn sedan. Be moderatorn skicka en ny personlig länk.</p><button class="btn ghost" data-act="joinCancel">Stäng</button></div>`;
   if(j.status==='rejected')return`<div class="card box"><h3>Förfrågan godkändes inte</h3><p class="s">Hör av dig till lagets moderator om det blivit fel.</p><button class="btn ghost" data-act="joinCancel">Stäng</button></div>`;
   if(j.error)return`<div class="card box"><h3>Inbjudningslänken fungerar inte</h3><p class="s">Den kan ha bytts ut eller stängts av. Be moderatorn om en ny länk.</p><button class="btn ghost" data-act="joinCancel">Stäng</button></div>`;
   if(!j.info)return`<div class="spin"></div><p class="empty">Hämtar…</p>${tokens().length?`<button class="btn ghost block" data-act="joinCancel">Avbryt – tillbaka till Samåk</button>`:''}`;
@@ -957,6 +969,7 @@ async function pollJoin(){
     if(r.status==='approved'&&r.token){lsSet('join','');addToken(r.token,r.group);location.reload();return}
     if(r.status==='rejected'){S.join={...j,status:'rejected'};lsSet('join','');render();return}
     if(r.status==='unknown'){S.join={...j,status:null,secret:null,error:true};lsSet('join','');render();return}
+    if(r.status==='expired'){S.join={...j,status:'expired'};lsSet('join','');render();return}
   }catch{}
   joinT=setTimeout(pollJoin,8000);
 }
@@ -1060,7 +1073,9 @@ const ACT={
   async famArchive(d){if(!await ask(`Ta bort ${famName(d.fid)}? Deras länkar spärras. Statistiken finns kvar.`,'Ta bort',true))return;await act('api_family_archive',{p_family:d.fid});closeSheet()},
   invite(){sheet('invite')},
   memberMenu(d){sheet('memberMenu',{mid:d.mid})},
-  showLink(d){const m=S.members.find(x=>x.id===d.mid);if(m)sheet('link',{token:m.token,name:parentName(m.fid,m.pid),fid:m.fid})},
+  async relink(d){const m=S.members.find(x=>x.id===d.mid);if(!m)return;const nm=parentName(m.fid,m.pid);
+    if(!await ask(`Skicka en ny länk till ${nm}? Den nuvarande länken slutar gälla direkt.`,'Skapa ny länk'))return;
+    try{const t=await rpc('api_member_relink',{p_member:m.id});await refresh(true);sheet('link',{token:t,name:nm,fid:m.fid})}catch{}},
   async copyMsg(){const t=$('#msgText').value;try{await navigator.clipboard.writeText(t);toast('Meddelandet är kopierat')}catch{const el=$('#msgText');el.focus();el.select();toast('Markerat – kopiera med Ctrl/⌘+C')}},
   async shareMsg(){try{await navigator.share({text:$('#msgText').value})}catch{}},
   welcomeFill(){closeSheet();setTimeout(()=>ACT.fill(),250)},
@@ -1073,7 +1088,9 @@ const ACT={
   extend(){sheet('extend')},
   snoozeExtend(){lsSet('snoozeExt.'+S.group.id,String(Date.now()+3*864e5));render()},
   gotoMissing(d){S.week=monday(pd(d.date));render();window.scrollTo(0,0);ACT.fill()},
-  backup(){const data={exported:new Date().toISOString(),group:S.group,state:JSON.parse(S.rawStr||'{}')};
+  backup(){const st=JSON.parse(S.rawStr||'{}');
+    const data={exported:new Date().toISOString(),note:'Säkerhetskopia utan inloggningslänkar och inbjudningskod.',group:{name:st.group?.name},
+      families:st.families,sessions:st.sessions,answers:st.answers,drivers:st.drivers,messages:st.messages};
     const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);
     a.download=`samak-sakerhetskopia-${isoD(new Date())}.json`;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000);toast('Säkerhetskopian laddas ner')},
   joinPick(d){keepJoinInputs();S.join.sel={...(S.join.sel||{}),fid:d.fid,pid:null};render()},
@@ -1160,7 +1177,10 @@ document.addEventListener('change',e=>{const el=e.target.closest('[data-change]'
   if(k==='repeat')$('#repeatBox').hidden=!el.checked;
   if(k==='icsFile'){const f=el.files[0];if(f)f.text().then(t=>{S.importRows=markDup(parseICS(t));renderSheet(true)})}
 });
-document.addEventListener('keydown',e=>{if(e.key==='Escape'&&S.sheet)closeSheet()});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&S.sheet)closeSheet();
+  if(e.key==='Tab'&&S.sheet){const p=$('#sheet .panel');if(!p)return;const f=[...p.querySelectorAll('button,input,select,textarea,a[href]')].filter(x=>!x.disabled&&x.offsetParent!==null);if(!f.length)return;
+    const a=f[0],z=f[f.length-1];if(e.shiftKey&&document.activeElement===a){e.preventDefault();z.focus()}else if(!e.shiftKey&&document.activeElement===z){e.preventDefault();a.focus()}else if(!p.contains(document.activeElement)){e.preventDefault();a.focus()}}});
+document.addEventListener('focusout',e=>{if(S._sheetDirty&&$('#sheet').contains(e.target))setTimeout(()=>{if(S._sheetDirty&&!$('#sheet').contains(document.activeElement))renderSheet()},0)});
 
 /* ================= Start och uppdatering ================= */
 let pollT;
