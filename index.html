@@ -313,7 +313,7 @@ const Api={
     return j;
   }
 };
-const ERR={cannot_relink_self:'Använd ”Visa min länk” för din egen länk.',member_gone:'Länken är redan ersatt eller spärrad.',invalid_code:'Inbjudningslänken fungerar inte längre.',request_gone:'Förfrågan är redan hanterad.',too_many_requests:'För många väntande förfrågningar.',invalid_token:'Länken fungerar inte längre.',not_moderator:'Det kräver moderator.',not_your_family:'Du kan bara ändra för din egen familj.',locked:'Träningen är låst – lås upp först.',need_one_moderator:'Gruppen måste ha minst en moderator.',cannot_revoke_self:'Du kan inte spärra din egen länk.'};
+const ERR={not_passed:'Resan har inte passerat än.',riders_need_driver:'Någon måste ha kört om någon åkte med.',cancelled:'Träningen är inställd.',cannot_relink_self:'Använd ”Visa min länk” för din egen länk.',member_gone:'Länken är redan ersatt eller spärrad.',invalid_code:'Inbjudningslänken fungerar inte längre.',request_gone:'Förfrågan är redan hanterad.',too_many_requests:'För många väntande förfrågningar.',invalid_token:'Länken fungerar inte längre.',not_moderator:'Det kräver moderator.',not_your_family:'Du kan bara ändra för din egen familj.',locked:'Träningen är låst – lås upp först.',need_one_moderator:'Gruppen måste ha minst en moderator.',cannot_revoke_self:'Du kan inte spärra din egen länk.'};
 async function rpc(fn,args,{quiet}={}){
   try{const r=await Api.call(fn,{p_token:S.token,...args});return r}
   catch(e){
@@ -325,7 +325,7 @@ async function rpc(fn,args,{quiet}={}){
 async function act(fn,args,okMsg){try{await rpc(fn,args);if(okMsg)toast(okMsg);await refresh(true);return true}catch{await refresh(true);return false}}
 
 /* ================= Tillstånd ================= */
-const S={requests:[],join:null,token:null,raw:null,rawStr:'',loading:true,netErr:false,badToken:false,
+const S={out:{},outDraft:null,requests:[],join:null,token:null,raw:null,rawStr:'',loading:true,netErr:false,badToken:false,
   me:null,group:null,fam:{},sess:{},ans:{},drv:{},msgs:[],members:[],
   view:'week',week:monday(new Date()),weekChosen:false,sheet:null,importRows:null,acting:null};
 async function refresh(force){
@@ -348,6 +348,7 @@ function load(st){
   S.sess=Object.fromEntries(st.sessions.map(s=>[s.id,s]));
   S.ans=Object.fromEntries(st.answers.map(a=>[a.sid+'__'+a.fid,a]));
   S.drv={};for(const d of st.drivers)(S.drv[d.sid+'__'+d.dir]??=[]).push(d);
+  S.out=Object.fromEntries((st.outcomes||[]).map(o=>[o.sid+'__'+o.dir,o]));
   S.msgs=st.messages;S.members=st.members||[];S.requests=st.requests||[];invalidatePlan();
   const a=tokens();const i=a.findIndex(x=>x.t===S.token);if(i>=0&&a[i].name!==S.group?.name){a[i].name=S.group?.name||'';saveTokens(a)}
   if(!S.weekChosen){S.weekChosen=true;chooseWeek()}
@@ -429,15 +430,18 @@ function addressFor(fid,date){const f=S.fam[fid];if(!f)return'';const c=custodia
 function ownCustody(date){const fid=S.me?.family_id;if(!fid)return null;const cu=custodian(fid,date);if(!cu)return null;return cu===S.me.parent_id?{me:true,name:'du'}:{me:false,name:parentName(fid,cu)}}
 function defaultDriverPid(fid,date){return custodian(fid,date)||(fid===S.me?.family_id?S.me.parent_id:null)||activeParents(fid)[0]?.id||null}
 function computeStats(){
-  const now=new Date();const fam={},par={};
-  for(const f of famList(true)){fam[f.id]={drives:(f.baseline_other||0),rides:0};for(const p of f.parents){par[p.id]=p.baseline||0;fam[f.id].drives+=p.baseline||0}}
-  for(const key of Object.keys(S.drv)){
-    const[sid,dir]=key.split('__');const s=S.sess[sid];if(!s||s.cancelled||tripTime(s,dir)>now)continue;
-    const ds=drivers(sid,dir);if(!ds.length)continue;
-    for(const d of ds){if(!fam[d.fid])continue;fam[d.fid].drives++;if(d.pid)par[d.pid]=(par[d.pid]||0)+1}
-    for(const x of participants(s,dir)){if(!ds.some(d=>d.fid===x.fid)&&fam[x.fid])fam[x.fid].rides++}
-  }
-  return{fam,par};
+  const now=new Date();const fam={},par={};let planned=0,confirmed=0;
+  const F=fid=>fam[fid]??={drives:0,rides:0};
+  for(const f of famList(true)){F(f.id).drives+=f.baseline_other||0;for(const p of f.parents){par[p.id]=p.baseline||0;fam[f.id].drives+=p.baseline||0}}
+  for(const s of sessList()){if(s.cancelled)continue;
+    for(const dir of['to','from']){if(tripTime(s,dir)>now)continue;
+      const o=S.out[s.id+'__'+dir];
+      if(o){confirmed++;for(const d of o.drivers||[]){F(d.fid).drives++;if(d.pid)par[d.pid]=(par[d.pid]||0)+1}for(const r of o.riders||[])F(r).rides++;continue}
+      const ds=drivers(s.id,dir);if(!ds.length)continue;planned++;
+      for(const d of ds){F(d.fid).drives++;if(d.pid)par[d.pid]=(par[d.pid]||0)+1}
+      for(const x of participants(s,dir)){if(!ds.some(d=>d.fid===x.fid))F(x.fid).rides++}
+    }}
+  return{fam,par,planned,confirmed};
 }
 let freezing=false;
 async function freezePast(){
@@ -537,7 +541,7 @@ function viewWeek(){
       <button class="btn sm ${unk?'acc':'ghost'}" data-act="fill">Fyll i veckan</button></div><div class="mgrid">${cells}</div></div>`;
   }
   const allL=act.length&&act.every(s=>isLocked(s.id)),anyL=act.some(s=>isLocked(s.id));
-  h+=`<div class="sec"><h2>Veckoplanering</h2><div class="row">${isMod()&&act.length&&!allL?`<button class="btn sm ghost" data-act="lockWeek">🔒 Lås veckan</button>`:''}${anyL?`<button class="btn sm ghost" data-act="unlockWeek">🔓 Lås upp</button>`:''}</div></div>`;
+  h+=`<div class="sec"><h2>Veckoplanering</h2><div class="row">${isMod()?`<button class="btn sm ghost" data-act="extra">+ Extra resa</button>`:''}${isMod()&&act.length&&!allL?`<button class="btn sm ghost" data-act="lockWeek">🔒 Lås veckan</button>`:''}${anyL?`<button class="btn sm ghost" data-act="unlockWeek">🔓 Lås upp</button>`:''}</div></div>`;
   if(!list.length){
     const next=sessList().find(s=>s.date>=isoD(addDays(S.week,7))&&!s.cancelled);
     h+=`<div class="card empty"><h3>Inga träningar den här veckan</h3>${next?`<p>Nästa: ${fmtLong(next.date)}</p><button class="btn ghost" data-act="gotoweek" data-date="${next.date}">Gå till vecka ${isoWeek(pd(next.date))}</button>`:''}
@@ -551,7 +555,7 @@ function sessCard(s){
   const meta=[s.gather?`Samling <b>${esc(s.gather)}</b>`:'',`${esc(s.start)}–${esc(s.end)}`,esc(s.place)].filter(Boolean).join(' · ');
   return`<article class="card sess ${s.cancelled?'cancel':''}">
    <div class="shead"><div class="date"><b>${d.getDate()}</b><span>${MON3[d.getMonth()].toUpperCase()}</span></div>
-    <div class="grow"><h3>${cap(DAYS[d.getDay()])} · ${esc(s.title)}${s.cancelled?'<span class="tag c">Inställd</span>':''}${s.lock?.on&&!s.cancelled?' 🔒':''}${(()=>{const c=ownCustody(s.date);return c&&!s.cancelled?`<span class="tag ${c.me?'resp-me':'resp-other'}">${c.me?'Du har ansvar':esc(c.name)+' har ansvar'}</span>`:''})()}</h3><div class="meta">${meta}</div>${s.info?`<div class="info">${esc(s.info)}</div>`:''}</div>
+    <div class="grow"><h3>${cap(DAYS[d.getDay()])} · ${esc(s.title)}${s.kind==='extra'?'<span class="tag p">Extra</span>':''}${s.cancelled?'<span class="tag c">Inställd</span>':''}${s.lock?.on&&!s.cancelled?' 🔒':''}${(()=>{const c=ownCustody(s.date);return c&&!s.cancelled?`<span class="tag ${c.me?'resp-me':'resp-other'}">${c.me?'Du har ansvar':esc(c.name)+' har ansvar'}</span>`:''})()}</h3><div class="meta">${meta}</div>${s.info?`<div class="info">${esc(s.info)}</div>`:''}</div>
     ${isMod()?`<button class="dots" data-act="sessMenu" data-sid="${s.id}" aria-label="Ändra träning">${ICON.dots}</button>`:''}</div>
    ${s.cancelled?'':`<div class="trips">${tripCell(s,'to')}${tripCell(s,'from')}</div>`}
    ${s.lock&&!s.cancelled?`<div class="lockbar ${s.lock.on?'on':'off'}"><span class="grow">${lockText(s)}</span>${s.lock.on?`<button class="btn sm ghost" data-act="unlock" data-sid="${s.id}">Lås upp</button>`:''}</div>`:''}</article>`;
@@ -567,17 +571,18 @@ function chip(x){
 function tripCell(s,dir){
   const c=coverage(s,dir);const past=tripTime(s,dir)<new Date();
   const t=dir==='to'?`före ${esc(dropTime(s))}`:`efter ${esc(s.end)}`;
-  let body;
-  if(c.ds.length)body=c.ds.map(d=>`<div class="drv"><b>${esc(parentName(d.fid,d.pid))} kör${c.fixed?(c.st==='ok'?' ✓':''):' <span class="tag f">förslag</span>'}</b>${esc(childName(d.fid))}${d.reserve?' · om det krisar':''} · ${Number(d.seats)} platser</div>`).join('')
+  let body;const o=S.out[s.id+'__'+dir];
+  if(o)body=`<div class="drv"><b>${(o.drivers||[]).map(d=>esc(parentName(d.fid,d.pid))).join(' + ')||'Ingen'} körde ✓</b>Genomförd${o.riders?.length?' · '+o.riders.length+' åkte med':''}</div>`;
+  else if(c.ds.length)body=c.ds.map(d=>`<div class="drv"><b>${esc(parentName(d.fid,d.pid))} kör${c.fixed?(c.st==='ok'?' ✓':''):' <span class="tag f">förslag</span>'}</b>${esc(childName(d.fid))}${d.reserve?' · om det krisar':''} · ${Number(d.seats)} platser</div>`).join('')
     +(c.st==='short'?`<div class="need" style="color:var(--warn);font-weight:600">${c.riders.length-c.seats} plats${c.riders.length-c.seats>1?'er':''} saknas</div>`:'');
   else if(c.st==='open')body=`<div class="drv"><b>Förare saknas</b>Ingen har svarat att de kan köra</div>`;
   else if(c.st==='wait')body=`<div class="drv"><b>Väntar på svar</b>${c.unk.length} av ${c.modes.length} familjer har inte svarat</div>`;
   else body=`<div class="drv"><b>Ingen skjuts behövs</b></div>`;
   const kids=chipOrder(c).map(chip).join('');
   const info=[c.riders.length&&c.ds.length?`${c.riders.length} åker med`:'',c.ds.length&&c.unk.length?`${c.unk.length} har inte svarat`:'',c.prelim.length?`${c.prelim.length} preliminär${c.prelim.length>1?'a':''}`:''].filter(Boolean).join(' · ');
-  return`<button class="trip st-${c.st==='prelim'?'maybe':c.st}" data-act="trip" data-sid="${s.id}" data-dir="${dir}"${past?' style="opacity:.75"':''}>
+  return`<button class="trip st-${o?'ok':c.st==='prelim'?'maybe':c.st}" data-act="trip" data-sid="${s.id}" data-dir="${dir}"${past?' style="opacity:.75"':''}>
     <div class="th"><span>${dir==='to'?'→ Lämning':'← Hämtning'}</span><span>${t}</span></div>${body}
-    ${info?`<div class="need">${info}</div>`:''}<div class="kids">${kids}</div></button>`;
+    ${info&&!o?`<div class="need">${info}</div>`:''}${past&&!o&&isMod()?`<div class="need" style="color:var(--acc);font-weight:600">● Ej ifyllt i efterhand</div>`:''}<div class="kids">${kids}</div></button>`;
 }
 
 function viewChat(){
@@ -611,7 +616,8 @@ function viewStats(){
       ${f.baseline_other?`<div class="par"><span>Övriga</span><b>${f.baseline_other}</b></div>`:''}
       <div class="bal">Åkt med andra: ${st.rides}</div></div>`;
   }
-  h+=`<p class="hint">En körning räknas när tiden för lämningen eller hämtningen har passerat. Inställda träningar räknas inte.</p>`;
+  const cs=computeStats();
+  h+=`<p class="hint">En körning räknas när tiden för lämningen eller hämtningen har passerat. Inställda träningar räknas inte.${cs.planned?` ${cs.planned} ${cs.planned===1?'resa bygger':'resor bygger'} på planen och är inte ifyllda i efterhand.`:''}${cs.confirmed?` ${cs.confirmed} ${cs.confirmed===1?'resa är ifylld':'resor är ifyllda'} i efterhand.`:''}</p>`;
   return h;
 }
 
@@ -654,9 +660,9 @@ function viewGroup(){
 const LIVE=new Set(['trip','fill','memberMenu','sessMenu']);
 function sheet(kind,args={}){S.sheet={kind,args};renderSheet(true)}
 function closeSheet(){const el=$('#sheet');S.sheet=null;el.classList.remove('open');const o=S._opener;S._opener=null;if(o&&document.contains(o))try{o.focus({preventScroll:true})}catch{}setTimeout(()=>{if(!S.sheet){el.hidden=true;el.innerHTML=''}},220)}
-function renderSheet(first){
+function renderSheet(first,force){
   const k=S.sheet;const el=$('#sheet');if(!k)return;
-  if(!first&&!LIVE.has(k.kind))return;
+  if(!first&&!force&&!LIVE.has(k.kind))return;
   if(!first&&el.contains(document.activeElement)&&/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)){S._sheetDirty=true;return}
   S._sheetDirty=false;
   const body=SHEETS[k.kind](k.args);if(body==null){closeSheet();return}
@@ -707,6 +713,9 @@ const SHEETS={
   trip({sid,dir}){
     const s=S.sess[sid];if(!s)return null;const c=coverage(s,dir);const locked=isLocked(sid);const past=tripTime(s,dir)<new Date();
     let h=`<h2>${dir==='to'?'Lämning':'Hämtning'} ${fmtShort(s.date).toLowerCase()}</h2><p class="lead">${esc(s.title)} · ${dir==='to'?`på plats före ${esc(dropTime(s))}`:`hämtas efter ${esc(s.end)}`} · ${esc(s.place)}</p>`;
+    const o=S.out[sid+'__'+dir];
+    if(o)h+=`<div class="banner ok"><div class="grow"><b>Genomförd ✓</b>Körde: ${(o.drivers||[]).map(d=>esc(parentName(d.fid,d.pid))+' ('+esc(childName(d.fid))+')').join(', ')||'ingen'}${o.riders?.length?'<br>Åkte med: '+o.riders.map(r=>esc(childName(r))).join(', '):''}</div></div>`;
+    if(past&&isMod())h+=`<button class="btn ${o?'ghost':'acc'} block" style="margin-bottom:12px" data-act="outcome" data-sid="${sid}" data-dir="${dir}">✏️ ${o?'Ändra hur det blev':'Fyll i hur det blev'}</button>`;
     if(s.lock)h+=`<div class="banner ${s.lock.on?'info':'warn'}"><div class="grow"><b>${lockText(s)}</b>${s.lock.on?'Svar och förare är fastställda.':'Ändringar kan göras – se till att alla får informationen.'}</div>${s.lock.on?`<button class="btn sm ghost" data-act="unlock" data-sid="${sid}">Lås upp</button>`:''}</div>`;
     h+=`<h4>Förare</h4><div class="list">`;
     if(!c.ds.length)h+=`<p class="hint" style="margin:0 0 6px">${c.st==='open'?'Ingen har svarat att de kan köra.':'Ingen förare behövs än.'}</p>`;
@@ -731,6 +740,18 @@ const SHEETS={
     }
     h+=`</div>`;
     if(!locked&&needsAction(c.st))h+=`<div class="sp"></div><button class="btn ghost block" data-act="askChat" data-sid="${sid}" data-dir="${dir}">Fråga i chatten</button>`;
+    return h;
+  },
+  outcome({sid,dir}){
+    const s=S.sess[sid];if(!s||!S.outDraft)return null;const D=S.outDraft;
+    const fams=famList(true).filter(f=>!f.archived||D[f.id]?.role!=='absent');
+    let h=`<h2>Hur blev det?</h2><p class="lead">${dir==='to'?'Lämning':'Hämtning'} ${fmtShort(s.date).toLowerCase()} · ${esc(s.title)}. Förifyllt från planen – rätta det som blev annorlunda.</p><div class="list">`;
+    for(const f of fams){const r=D[f.id]||{role:'absent'};const ps=activeParents(f.id);
+      h+=`<div class="li" style="flex-wrap:wrap"><div class="av" style="background:${famColor(f.id)}">${esc((f.child||'?')[0])}</div><div class="grow t">${esc(f.child)}</div>
+        <div style="width:100%">${segBtns(r.role,[['driver','Körde'],['rider','Åkte med'],['absent','Var inte med']],'outRole',`data-fid="${f.id}"`)}</div>
+        ${r.role==='driver'&&ps.length>1?`<div class="row" style="margin-top:6px;gap:6px"><span class="hint">Vem körde:</span>${ps.map(p=>`<button type="button" class="btn sm ${p.id===r.pid?'pri':'ghost'}" data-act="outPid" data-fid="${f.id}" data-pid="${p.id}">${esc(p.name)}</button>`).join('')}</div>`:''}</div>`}
+    h+=`</div><div class="sp"></div><div class="row between">${S.out[sid+'__'+dir]?`<button class="btn ghost" data-act="outDel" data-sid="${sid}" data-dir="${dir}">Ta bort utfallet</button>`:'<span></span>'}<button class="btn pri" data-act="outSave" data-sid="${sid}" data-dir="${dir}">Spara</button></div>
+      <p class="hint">Statistiken använder det ifyllda utfallet i stället för planen.</p>`;
     return h;
   },
   howDriver(){
@@ -849,15 +870,18 @@ const SHEETS={
      <button class="btn ghost block" data-act="sessCancel" data-sid="${sid}">${s.cancelled?'Återställ (ej inställd)':'Ställ in träningen'}</button><div class="sp"></div>
      <button class="btn ghost block" style="color:var(--bad)" data-act="sessDelete" data-sid="${sid}">Ta bort</button>`;
   },
-  sessEdit({sid}){
-    const s=sid?S.sess[sid]:{title:'Träning',date:isoD(S.week<new Date()?new Date():S.week),place:'',gather:'',start:'17:00',end:'18:30',info:''};if(!s)return null;
-    return`<h2>${sid?'Ändra träning':'Ny träning'}</h2><form data-form="sess" data-sid="${sid||''}">
-      <label class="f"><span>Namn</span><input type="text" name="title" value="${esc(s.title)}" required></label>
+  sessEdit({sid,kind}){
+    const today=new Date();const inWeek=today>=S.week&&today<addDays(S.week,7);
+    const s=sid?S.sess[sid]:{title:kind==='extra'?'':'Träning',date:isoD(kind==='extra'?(inWeek?today:S.week):(S.week<today?today:S.week)),place:'',gather:'',start:'17:00',end:'18:30',info:'',kind:kind||'training'};if(!s)return null;
+    const ex=(s.kind||'training')==='extra';
+    return`<h2>${sid?(ex?'Ändra extra resa':'Ändra träning'):(ex?'Ny extra resa':'Ny träning')}</h2>${ex&&!sid?'<p class="lead">Till exempel match, cup eller lagaktivitet. Kan läggas in i efterhand – fyll sedan i hur det blev på resan.</p>':''}<form data-form="sess" data-sid="${sid||''}">
+      <input type="hidden" name="kind" value="${ex?'extra':'training'}">
+      <label class="f"><span>Namn</span><input type="text" name="title" value="${esc(s.title)}" placeholder="${ex?'t.ex. Match mot Djurgården':''}" required></label>
       <div class="g2"><label class="f"><span>Datum</span><input type="date" name="date" value="${esc(s.date)}" required></label><label class="f"><span>Plats</span><input type="text" name="place" value="${esc(s.place)}"></label></div>
       <div class="g3"><label class="f"><span>Samling</span><input type="time" name="gather" value="${esc(s.gather)}"></label><label class="f"><span>Start</span><input type="time" name="start" value="${esc(s.start)}" required></label><label class="f"><span>Slut</span><input type="time" name="end" value="${esc(s.end)}" required></label></div>
       <label class="f"><span>Övrig information</span><input type="text" name="info" value="${esc(s.info)}"></label>
       ${sid?(s.series_id?`<label class="chk"><input type="radio" name="scope" value="one" checked><span>Bara det här tillfället</span></label><label class="chk"><input type="radio" name="scope" value="following"><span>Det här och alla senare i serien</span></label>`:''):
-        `<label class="chk"><input type="checkbox" name="repeat" data-change="repeat"><span>Upprepa varje vecka</span></label><div id="repeatBox" hidden><label class="f"><span>Till och med</span><input type="date" name="until" value="${isoD(addDays(pd(s.date),56))}"></label></div>`}
+        (ex?'':`<label class="chk"><input type="checkbox" name="repeat" data-change="repeat"><span>Upprepa varje vecka</span></label><div id="repeatBox" hidden><label class="f"><span>Till och med</span><input type="date" name="until" value="${isoD(addDays(pd(s.date),56))}"></label></div>`)}
       <div class="row end"><button class="btn pri" type="submit">Spara</button></div></form>`;
   },
   importSL(){
@@ -1043,6 +1067,18 @@ const ACT={
     toast(n?`Kopierade ${n} svar`:'Inga svar förra veckan att kopiera')},
   take(d){sheet('take',{sid:d.sid,dir:d.dir,fid:d.fid})},
   howDriver(){sheet('howDriver')},
+  outcome(d){const s=S.sess[d.sid];const o=S.out[d.sid+'__'+d.dir];const D={};
+    for(const f of famList(true))D[f.id]={role:'absent',pid:null};
+    if(o){for(const x of o.drivers||[])D[x.fid]={role:'driver',pid:x.pid||driverPid(x.fid,s.date,s.id,d.dir)};for(const r of o.riders||[])if(D[r])D[r].role='rider'}
+    else{const c=coverage(s,d.dir);for(const x of c.ds)D[x.fid]={role:'driver',pid:x.pid};for(const x of c.riders)if(D[x.fid]&&D[x.fid].role!=='driver')D[x.fid].role='rider'}
+    S.outDraft=D;sheet('outcome',{sid:d.sid,dir:d.dir})},
+  outRole(d){const s=S.sess[S.sheet.args.sid];const r=S.outDraft[d.fid];r.role=d.m;if(d.m==='driver'&&!r.pid)r.pid=driverPid(d.fid,s.date,s.id,S.sheet.args.dir);renderSheet(false,true)},
+  outPid(d){S.outDraft[d.fid].pid=d.pid;renderSheet(false,true)},
+  async outSave(d){const D=S.outDraft;const drv=Object.entries(D).filter(([,v])=>v.role==='driver').map(([fid,v])=>({fid,pid:v.pid}));const rid=Object.entries(D).filter(([,v])=>v.role==='rider').map(([fid])=>fid);
+    if(rid.length&&!drv.length){toast('Någon måste ha kört om någon åkte med');return}
+    if(await act('api_outcome_save',{p_session:d.sid,p_dir:d.dir,p_drivers:drv,p_riders:rid},'Utfallet är sparat'))sheet('trip',{sid:d.sid,dir:d.dir})},
+  async outDel(d){if(!await ask('Ta bort det ifyllda utfallet? Statistiken går då tillbaka till planen.','Ta bort',true))return;if(await act('api_outcome_delete',{p_session:d.sid,p_dir:d.dir},'Borttaget'))sheet('trip',{sid:d.sid,dir:d.dir})},
+  extra(){sheet('sessEdit',{kind:'extra'})},
   setPid(d){saveAnswer(d.sid,actingFid(),{[d.dir+'_pid']:d.pid})},
   noteTip(d,el){document.querySelectorAll('.tipbox').forEach(t=>t.remove());const r=el.getBoundingClientRect();const t=document.createElement('div');t.className='tipbox';t.textContent=d.text;
     document.body.appendChild(t);const w=Math.min(280,window.innerWidth-24);t.style.maxWidth=w+'px';const left=Math.max(12,Math.min(window.innerWidth-t.offsetWidth-12,r.left+r.width/2-t.offsetWidth/2));
@@ -1156,7 +1192,7 @@ const FORMS={
     closeSheet();await refresh(true)},
   async sess(form,fd){
     const sid=form.dataset.sid||null;
-    const v={id:sid,title:fd.get('title').trim(),date:fd.get('date'),place:fd.get('place').trim(),gather:fd.get('gather')||'',start:fd.get('start'),end:fd.get('end'),info:fd.get('info').trim()};
+    const v={id:sid,kind:fd.get('kind')||'training',title:fd.get('title').trim(),date:fd.get('date'),place:fd.get('place').trim(),gather:fd.get('gather')||'',start:fd.get('start'),end:fd.get('end'),info:fd.get('info').trim()};
     if(!v.date||!validHM(v.start)||!validHM(v.end)){toast('Ange datum, start- och sluttid');return}
     if(v.end<=v.start){toast('Sluttiden måste vara efter starttiden');return}
     if(v.gather&&v.gather>v.start){toast('Samlingen kan inte vara efter starten');return}
