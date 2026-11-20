@@ -325,7 +325,7 @@ async function rpc(fn,args,{quiet}={}){
 async function act(fn,args,okMsg){try{await rpc(fn,args);if(okMsg)toast(okMsg);await refresh(true);return true}catch{await refresh(true);return false}}
 
 /* ================= Tillstånd ================= */
-const S={out:{},outDraft:null,requests:[],join:null,token:null,raw:null,rawStr:'',loading:true,netErr:false,badToken:false,
+const S={log:null,tripLog:{},out:{},outDraft:null,requests:[],join:null,token:null,raw:null,rawStr:'',loading:true,netErr:false,badToken:false,
   me:null,group:null,fam:{},sess:{},ans:{},drv:{},msgs:[],members:[],
   view:'week',week:monday(new Date()),weekChosen:false,sheet:null,importRows:null,acting:null};
 async function refresh(force){
@@ -343,6 +343,7 @@ async function refresh(force){
   }
 }
 function load(st){
+  if(S.sheet?.kind==='trip')setTimeout(()=>S.sheet?.kind==='trip'&&loadTripLog(S.sheet.args.sid),0);
   S.me=st.me;S.group=st.group;
   S.fam=Object.fromEntries(st.families.map(f=>[f.id,f]));
   S.sess=Object.fromEntries(st.sessions.map(s=>[s.id,s]));
@@ -650,6 +651,7 @@ function viewGroup(){
     h+=`<div class="sec"><h2>Träningar</h2><div class="row"><button class="btn sm ghost" data-act="import">Importera</button><button class="btn sm pri" data-act="sessEdit">+ Lägg till</button></div></div><div class="card box"><div class="list">`;
     h+=up.map(s=>`<div class="li"><div class="grow"><div class="t">${fmtShort(s.date)} · ${esc(s.title)}${s.cancelled?'<span class="tag c">Inställd</span>':''}</div><div class="s">${s.gather?'Samling '+esc(s.gather)+' · ':''}${esc(s.start)}–${esc(s.end)} · ${esc(s.place)}</div></div><button class="dots" data-act="sessMenu" data-sid="${s.id}">${ICON.dots}</button></div>`).join('')||'<p class="hint">Inga kommande träningar.</p>';
     h+=`</div></div>`;
+    h+=`<div class="sec"><h2>Ändringslogg</h2></div><div class="card box"><p class="s" style="margin-top:0">Se vem som har ändrat svar, förare, låsningar, utfall, träningar och medlemmar – och när.</p><button class="btn ghost" data-act="log">🕘 Visa ändringslogg</button></div>`;
     h+=`<div class="sec"><h2>Säkerhetskopia</h2></div><div class="card box"><p class="s" style="margin-top:0">Laddar ner all data i gruppen som en fil. Spara den på ett säkert ställe – den innehåller namn, adresser och inloggningslänkar.</p><button class="btn ghost" data-act="backup">Ladda ner säkerhetskopia</button></div>`;
   }
   h+=`<div class="sec"><h2>Den här enheten</h2></div><div class="card box"><div class="row"><button class="btn ghost" data-act="myLink">Visa min länk</button><button class="btn ghost" data-act="groups">Grupper</button><button class="btn ghost" data-act="forget">Logga ut</button></div><p class="hint"><button class="link" data-act="about">Om Samåk</button></p><p class="hint">”Visa min länk” använder du för att logga in på en annan enhet, till exempel datorn. Logga ut tar bort inloggningen från den här enheten – du kommer in igen med din länk.</p></div>`;
@@ -658,7 +660,7 @@ function viewGroup(){
 
 /* ================= Popuprutor ================= */
 const LIVE=new Set(['trip','fill','memberMenu','sessMenu']);
-function sheet(kind,args={}){S.sheet={kind,args};renderSheet(true)}
+function sheet(kind,args={}){S.sheet={kind,args};if(kind==='trip'&&isMod())loadTripLog(args.sid);renderSheet(true)}
 function closeSheet(){const el=$('#sheet');S.sheet=null;el.classList.remove('open');const o=S._opener;S._opener=null;if(o&&document.contains(o))try{o.focus({preventScroll:true})}catch{}setTimeout(()=>{if(!S.sheet){el.hidden=true;el.innerHTML=''}},220)}
 function renderSheet(first,force){
   const k=S.sheet;const el=$('#sheet');if(!k)return;
@@ -675,6 +677,52 @@ function renderSheet(first,force){
 function ask(msg,ok='OK',danger){return new Promise(res=>{const d=$('#dlg');d.innerHTML=`<div class="scrim"></div><div class="dbox"><p>${esc(msg)}</p><div class="row end"><button class="btn ghost" data-r="0">Avbryt</button><button class="btn ${danger?'danger':'pri'}" data-r="1">${esc(ok)}</button></div></div>`;d.hidden=false;d.onclick=e=>{const b=e.target.closest('[data-r]');if(!b&&!e.target.classList.contains('scrim'))return;d.hidden=true;d.innerHTML='';res(!!b&&b.dataset.r==='1')}})}
 let toastT;function toast(t){let el=$('.toast');if(!el){el=document.createElement('div');el.className='toast';document.body.appendChild(el)}el.textContent=t;clearTimeout(toastT);toastT=setTimeout(()=>el.remove(),3200)}
 const segBtns=(cur,opts,act,data)=>`<div class="seg">${opts.map(([v,l])=>`<button type="button" class="${cur===v?'on v-'+v:''}" data-act="${act}" data-m="${v}" ${data}>${l}</button>`).join('')}</div>`;
+
+/* ================= Ändringslogg ================= */
+const DAY3=['sön','mån','tis','ons','tor','fre','lör'];
+const dayL=iso=>{if(!iso)return'';const d=pd(iso);return DAY3[d.getDay()]+' '+d.getDate()+'/'+(d.getMonth()+1)};
+const whenL=ts=>{const d=new Date(ts);return d.getDate()+' '+MON3[d.getMonth()]+' '+pad(d.getHours())+':'+pad(d.getMinutes())};
+const MODEL={drive:'Kan köra',need:'Behöver skjuts',reserve:'Om det krisar'};
+const q=v=>v?'”'+esc(v)+'”':'(tom)';
+function sessL(x){const s=x?.s||{};return`${esc(s.title||'Träning')} ${dayL(s.date)}`}
+function dirL(d){return d==='to'?'lämning':d==='from'?'hämtning':''}
+function ansParts(o,n,fid){const P=[];const f=(k,lab,fmt)=>{const a=o?o[k]:undefined,b=n?n[k]:undefined;if(o==null){if(b!=null&&b!==''&&b!==false)P.push(lab+': '+fmt(b));return}if(JSON.stringify(a??null)!==JSON.stringify(b??null))P.push(lab+': '+fmt(a)+' → '+fmt(b))};
+  f('att','Deltar',v=>v==='no'?'Nej':v==='yes'?'Ja':'–');f('to','Lämning',v=>MODEL[v]||'–');f('from','Hämtning',v=>MODEL[v]||'–');
+  f('prelim','Preliminärt',v=>v?'Ja':'Nej');f('note','Kommentar',q);f('to_note','Kommentar lämning',q);f('from_note','Kommentar hämtning',q);
+  f('to_pid','Kör lämning',v=>v?esc(parentName(fid,v)):'–');f('from_pid','Kör hämtning',v=>v?esc(parentName(fid,v)):'–');return P}
+function logText(e){const D=e.data||{},o=D.old,n=D.new,c=e.fid?esc(childName(e.fid)):'';
+  switch(e.kind){
+    case'answer':{const P=ansParts(o,n,e.fid);return{t:`${o?'ändrade':'svarade för'} ${c} · ${sessL(D)}`,d:P}}
+    case'driver':{const pn=v=>v?.pid?esc(parentName(e.fid,v.pid))+' ('+c+')':c;
+      return{t:!o?`satte ${pn(n)} som förare · ${sessL(D)} ${dirL(e.dir)}`:!n?`tog bort ${pn(o)} som förare · ${sessL(D)} ${dirL(e.dir)}`:`ändrade föraren ${pn(o)} → ${pn(n)} · ${sessL(D)} ${dirL(e.dir)}`}}
+    case'outcome':{const fx=v=>v?[(v.drivers||[]).map(x=>esc(parentName(x.fid,x.pid))+' ('+esc(childName(x.fid))+')').join(', ')+' körde',(v.riders||[]).length?(v.riders.map(r=>esc(childName(r))).join(', ')+' åkte med'):''].filter(Boolean):[];
+      return{t:`${!o?'fyllde i hur det blev':!n?'tog bort utfallet':'ändrade hur det blev'} · ${sessL(D)} ${dirL(e.dir)}`,d:n?fx(n):o?['Var: '+fx(o).join(' · ')]:[]}}
+    case'session_new':{const ds=D.sids||[];return{t:`lade till ${D.s?.kind==='extra'?'extra resa':'träning'} ${esc(D.s?.title||'')} ${dayL(D.s?.date)} ${esc(D.s?.start||'')}`,d:ds.length>1?[`Varje vecka, ${ds.length} tillfällen till och med ${dayL(ds[ds.length-1])}`]:[]}}
+    case'session_del':return{t:`tog bort ${sessL(D)}`};
+    case'session_edit':{const L={title:'Namn',date:'Datum',place:'Plats',gather:'Samling',start:'Start',end:'Slut',info:'Information'};const P=[];
+      for(const k in L)if((o?.[k]??'')!==(n?.[k]??''))P.push(L[k]+': '+(k==='date'?dayL(o[k])+' → '+dayL(n[k]):q(o[k])+' → '+q(n[k])));return{t:`ändrade ${sessL(D)}`,d:P}}
+    case'cancel':return{t:`${D.on?'ställde in':'återställde'} ${sessL(D)}`};
+    case'lock':return{t:`${D.on?'låste':'låste upp'} ${(D.sids||[]).slice().sort().map(dayL).join(', ')}`};
+    case'member_new':return{t:`lade till ${esc(parentName(e.fid,D.pid))} (${c}) som ${n?.role==='moderator'?'moderator':'medlem'}`};
+    case'member_role':return{t:`gjorde ${esc(parentName(e.fid,D.pid))} (${c}) till ${n==='moderator'?'moderator':'medlem'}`};
+    case'member_revoke':return{t:`spärrade länken för ${esc(parentName(e.fid,D.pid))} (${c})`};
+    case'member_relink':return{t:`skickade ny länk till ${esc(parentName(e.fid,D.pid))} (${c})`};
+    case'family_new':return{t:`lade till familjen ${esc(n?.child||c)}`};
+    case'family':{const P=[];if(o?.child!==n?.child)P.push('Barnets namn: '+q(o?.child)+' → '+q(n?.child));if((o?.address||'')!==(n?.address||''))P.push('Adress: '+q(o?.address)+' → '+q(n?.address));
+      if(o?.seats!==n?.seats)P.push('Platser i bilen: '+o?.seats+' → '+n?.seats);if(JSON.stringify(o?.shared)!==JSON.stringify(n?.shared))P.push('Delat boende: '+(n?.shared?.on?(o?.shared?.on?'ändrat':'på'):'av'));
+      if(JSON.stringify(o?.defaults)!==JSON.stringify(n?.defaults))P.push('Standardsvar ändrade');if(o?.archived!==n?.archived)P.push(n?.archived?'Arkiverad':'Återställd');
+      return{t:`ändrade familjen ${esc(n?.child||c)}`,d:P}}
+    case'parent':{if(!o)return{t:`lade till föräldern ${esc(n?.name)} (${c})`};if(!n)return{t:`tog bort föräldern ${esc(o?.name)} (${c})`};
+      const P=[];if(o.name!==n.name)P.push('Namn: '+q(o.name)+' → '+q(n.name));if((o.address||'')!==(n.address||''))P.push('Adress: '+q(o.address)+' → '+q(n.address));if(o.archived!==n.archived)P.push(n.archived?'Borttagen':'Återställd');
+      return{t:`ändrade föräldern ${esc(n.name)} (${c})`,d:P}}
+  }
+  return{t:esc(e.kind)}}
+function logRow(e){const x=logText(e);return`<div class="li" style="align-items:flex-start"><div class="grow"><div class="t"><b>${esc(e.aname)}</b>${e.achild?` <span class="muted">(${esc(e.achild)})</span>`:''} ${x.t}</div>${(x.d||[]).length?`<div class="s">${x.d.join('<br>')}</div>`:''}</div><div class="s" style="white-space:nowrap">${whenL(e.ts)}</div></div>`}
+async function loadLog(){const L=S.log;if(!L)return;L.loading=true;const f=L.filter||'';
+  try{L.rows=await rpc('api_audit',{p_session:f.startsWith('s:')?f.slice(2):null,p_family:f.startsWith('f:')?f.slice(2):null,p_limit:300},{quiet:true});L.err=null}catch(e){L.rows=[];L.err=e.code==='not_moderator'?'Bara moderatorer kan se loggen.':e.message&&/api_audit/.test(e.message)?'Loggen finns inte i databasen än – kör uppdatering 7 i Supabase.':'Kunde inte hämta loggen.'}
+  L.loading=false;if(S.sheet?.kind==='log')renderSheet(false,true)}
+async function loadTripLog(sid){if(!isMod())return;try{const r=await rpc('api_audit',{p_session:sid,p_limit:1},{quiet:true});S.tripLog[sid]=r[0]||false}catch{S.tripLog[sid]=false}
+  if(S.sheet?.kind==='trip'&&S.sheet.args.sid===sid)renderSheet(false,true)}
 
 const SHEETS={
   fill(){
@@ -740,6 +788,7 @@ const SHEETS={
     }
     h+=`</div>`;
     if(!locked&&needsAction(c.st))h+=`<div class="sp"></div><button class="btn ghost block" data-act="askChat" data-sid="${sid}" data-dir="${dir}">Fråga i chatten</button>`;
+    if(isMod()){const t=S.tripLog[sid];h+=`<p class="hint" style="margin-top:14px">🕘 ${t?`Senast ändrad av ${esc(t.aname)} ${whenL(t.ts)}`:t===false?'Inga loggade ändringar':'Hämtar historik…'} · <button class="link" data-act="log" data-sid="${sid}">Visa historik</button></p>`}
     return h;
   },
   outcome({sid,dir}){
@@ -752,6 +801,19 @@ const SHEETS={
         ${r.role==='driver'&&ps.length>1?`<div class="row" style="margin-top:6px;gap:6px"><span class="hint">Vem körde:</span>${ps.map(p=>`<button type="button" class="btn sm ${p.id===r.pid?'pri':'ghost'}" data-act="outPid" data-fid="${f.id}" data-pid="${p.id}">${esc(p.name)}</button>`).join('')}</div>`:''}</div>`}
     h+=`</div><div class="sp"></div><div class="row between">${S.out[sid+'__'+dir]?`<button class="btn ghost" data-act="outDel" data-sid="${sid}" data-dir="${dir}">Ta bort utfallet</button>`:'<span></span>'}<button class="btn pri" data-act="outSave" data-sid="${sid}" data-dir="${dir}">Spara</button></div>
       <p class="hint">Statistiken använder det ifyllda utfallet i stället för planen.</p>`;
+    return h;
+  },
+  log(){
+    const L=S.log;if(!L)return null;const f=L.filter||'';
+    const sOpt=L.sid&&S.sess[L.sid]?`<option value="s:${L.sid}" ${f==='s:'+L.sid?'selected':''}>${esc(fmtShort(S.sess[L.sid].date))} · ${esc(S.sess[L.sid].title)}</option>`:'';
+    let h=`<h2>Ändringslogg</h2><p class="lead">Vem som ändrade vad och när. Senaste först. Syns bara för moderatorer.</p>
+      <label class="f"><span>Visa</span><select data-change="logFilter"><option value="">Allt</option>${sOpt}${famList(true).map(x=>`<option value="f:${x.id}" ${f==='f:'+x.id?'selected':''}>${esc(x.child)}</option>`).join('')}</select></label>`;
+    if(!L.rows)h+=`<p class="hint">Hämtar…</p>`;
+    else if(L.err)h+=`<p class="hint" style="color:var(--warn)">${esc(L.err)}</p>`;
+    else if(!L.rows.length)h+=`<p class="hint">Inga ändringar loggade${f?' för det här urvalet':''} än. Loggen började när uppdatering 7 installerades.</p>`;
+    else{let last='';h+=`<div class="list">`;for(const e of L.rows){const d=new Date(e.ts);const day=cap(DAYS[d.getDay()])+' '+d.getDate()+' '+MONTHS[d.getMonth()];if(day!==last){h+=`<h4 style="margin:14px 0 4px">${day}</h4>`;last=day}h+=logRow(e)}h+=`</div>`;
+      if(L.rows.length>=300)h+=`<p class="hint">Visar de 300 senaste. Välj en familj ovan för att se äldre.</p>`}
+    h+=`<p class="hint">Flera ändringar av samma sak inom 2 minuter visas som en rad. Poster äldre än 12 månader tas bort.</p>`;
     return h;
   },
   howDriver(){
@@ -1054,6 +1116,7 @@ const ACT={
   gotoweek(d){S.week=monday(pd(d.date));render();window.scrollTo(0,0)},
   fill(){S.acting=null;sheet('fill')},
   trip(d){sheet('trip',{sid:d.sid,dir:d.dir})},
+  log(d){S.log={sid:d.sid||null,filter:d.sid?'s:'+d.sid:'',rows:null,loading:true};sheet('log');loadLog()},
   groups(){sheet('groups')},
   switch(d){lsSet('cur',d.t);location.reload()},
   async forget(){if(!await ask('Logga ut från den här enheten? Du behöver din länk för att komma in igen.','Logga ut',true))return;const a=tokens().filter(x=>x.t!==S.token);saveTokens(a);lsSet('cur',a[0]?.t||'');location.reload()},
@@ -1203,6 +1266,7 @@ document.addEventListener('submit',e=>{const f=e.target.closest('[data-form]');i
 document.addEventListener('click',e=>{if(!e.target.closest('[data-act="noteTip"]'))document.querySelectorAll('.tipbox').forEach(t=>t.remove());const el=e.target.closest('[data-act]');if(!el||el.tagName==='LABEL')return;e.preventDefault();ACT[el.dataset.act]?.({...el.dataset},el,e)});
 document.addEventListener('change',e=>{const el=e.target.closest('[data-change]');if(!el)return;const k=el.dataset.change;
   if(k==='acting'){S.acting=el.value;renderSheet(true)}
+  if(k==='logFilter'&&S.log){S.log.filter=el.value;S.log.rows=null;S.log.loading=true;el.blur();renderSheet(false,true);loadLog()}
   if(k==='prelim'){saveAnswer(el.dataset.sid,actingFid(),{prelim:el.checked})}
   if(k==='note'){const f=el.dataset.dir+'_note';const v=el.value.trim();if(v!==(effAnswer(el.dataset.sid,actingFid())?.[f]||''))saveAnswer(el.dataset.sid,actingFid(),{[f]:v})}
   if(k==='setDriverFam'&&el.value){sheet('take',{sid:el.dataset.sid,dir:el.dataset.dir,fid:el.value})}
