@@ -247,6 +247,7 @@ textarea{min-height:120px;resize:vertical}
 .tipbox{position:absolute;z-index:90;background:var(--ink);color:#fff;font-size:13px;line-height:1.35;padding:8px 11px;border-radius:10px;box-shadow:var(--sh);pointer-events:none}
 .tag.resp-me{background:var(--okbg);color:var(--ok)}
 .tag.resp-other{background:#E9ECEC;color:#4A585D}
+.tag.x{background:#DCEBE3;color:#245F44;font-weight:600;font-size:10.5px;padding:1px 6px;vertical-align:1px}
 </style>
 </head>
 <body>
@@ -305,7 +306,7 @@ function joinState(){try{return JSON.parse(lsGet('join')||'null')}catch{return n
 function readHashToken(){const m=location.hash.match(/^#(?:t=)?([a-f0-9]{40,80})$/i);if(m){addToken(m[1].toLowerCase());try{history.replaceState(null,'',location.pathname+location.search)}catch{location.hash=''}}}
 
 /* ================= API (Supabase RPC) ================= */
-const APP_VERSION=8,APP_DATE='20 nov 2026',NEED_DB=8;
+const APP_VERSION=9,APP_DATE='20 nov 2026',NEED_DB=9;
 const Api={
   async call(fn,args){
     const r=await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`,{method:'POST',headers:{'apikey':SUPABASE_KEY,...(SUPABASE_KEY.startsWith('eyJ')?{'Authorization':'Bearer '+SUPABASE_KEY}:{}),'Content-Type':'application/json'},body:JSON.stringify(args||{})});
@@ -438,7 +439,8 @@ function computeStats(){
   for(const s of sessList()){if(s.cancelled)continue;
     for(const dir of['to','from']){if(tripTime(s,dir)>now)continue;
       const o=S.out[s.id+'__'+dir];
-      if(o){confirmed++;const rr=o.riders||[];if(!rr.length){solo++;continue}for(const d of o.drivers||[]){F(d.fid).drives++;if(d.pid)par[d.pid]=(par[d.pid]||0)+1}for(const r of rr)F(r).rides++;continue}
+      if(o){confirmed++;const rr=o.riders||[];if(!rr.length){solo++;continue}const A=o.assign||{};const useA=(o.drivers||[]).length>1&&Object.keys(A).length>0;
+        for(const d of o.drivers||[]){if(useA&&!rr.some(r=>A[r]===d.fid)){solo++;continue}F(d.fid).drives++;if(d.pid)par[d.pid]=(par[d.pid]||0)+1}for(const r of rr)F(r).rides++;continue}
       const ds=drivers(s.id,dir);if(!ds.length)continue;planned++;
       const rr=participants(s,dir).filter(x=>!ds.some(d=>d.fid===x.fid));if(!rr.length){solo++;continue}
       for(const d of ds){F(d.fid).drives++;if(d.pid)par[d.pid]=(par[d.pid]||0)+1}
@@ -575,17 +577,23 @@ function tripCell(s,dir){
   const c=coverage(s,dir);const past=tripTime(s,dir)<new Date();
   const t=dir==='to'?`före ${esc(dropTime(s))}`:`efter ${esc(s.end)}`;
   let body;const o=S.out[s.id+'__'+dir];
-  if(o)body=`<div class="drv"><b>${(o.drivers||[]).map(d=>esc(parentName(d.fid,d.pid))).join(' + ')||'Ingen'} körde ✓</b>Genomförd${o.riders?.length?' · '+o.riders.length+' åkte med':' · ingen åkte med – räknas inte'}</div>`;
-  else if(c.ds.length)body=c.ds.map(d=>`<div class="drv"><b>${esc(parentName(d.fid,d.pid))} kör${c.fixed?(c.st==='ok'?' ✓':''):' <span class="tag f">förslag</span>'}</b>${esc(childName(d.fid))}${d.reserve?' · om det krisar':''} · ${Number(d.seats)} platser</div>`).join('')
+  if(o){const A=o.assign||{},ds=o.drivers||[],rr=o.riders||[];const nm=d=>esc(parentName(d.fid,d.pid));
+    if(ds.length>1&&Object.keys(A).length)body=ds.map(d=>{const mine=rr.filter(r=>A[r]===d.fid);return`<div class="drv"><b>${nm(d)} körde${mine.length?' ✓':''}</b>${mine.length?'Med: '+mine.map(r=>esc(childName(r))).join(', '):'Ingen annan med – räknas inte'}</div>`}).join('');
+    else body=`<div class="drv"><b>${ds.map(nm).join(' + ')||'Ingen'} körde ✓</b>${rr.length?'Med: '+rr.map(r=>esc(childName(r))).join(', '):'Ingen annan åkte med – räknas inte'}</div>`;
+    const at=o.at?new Date(o.at):null;body+=`<div class="need" style="font-style:italic">Ändrad i efterhand${o.by?' av '+esc(o.by):''}${at?' '+at.getDate()+'/'+(at.getMonth()+1):''}</div>`}
+  else if(c.ds.length)body=c.ds.map(d=>`<div class="drv"><b>${esc(parentName(d.fid,d.pid))} kör${c.fixed?(c.st==='ok'?' ✓':' <span class="tag x">fastställd</span>'):' <span class="tag f">förslag</span>'}</b>${esc(childName(d.fid))}${d.reserve?' · om det krisar':''} · ${Number(d.seats)} platser</div>`).join('')
     +(c.st==='short'?`<div class="need" style="color:var(--warn);font-weight:600">${c.riders.length-c.seats} plats${c.riders.length-c.seats>1?'er':''} saknas</div>`:'');
   else if(c.st==='open')body=`<div class="drv"><b>Förare saknas</b>Ingen har svarat att de kan köra</div>`;
   else if(c.st==='wait')body=`<div class="drv"><b>Väntar på svar</b>${c.unk.length} av ${c.modes.length} familjer har inte svarat</div>`;
   else body=`<div class="drv"><b>Ingen skjuts behövs</b></div>`;
   const kids=chipOrder(c).map(chip).join('');
-  const info=[c.riders.length&&c.ds.length?`${c.riders.length} åker med`:'',c.ds.length&&c.unk.length?`${c.unk.length} har inte svarat`:'',c.prelim.length?`${c.prelim.length} preliminär${c.prelim.length>1?'a':''}`:''].filter(Boolean).join(' · ');
+  const kn=x=>esc(childName(x.fid))+(c.prelim.some(p=>p.fid===x.fid)?' (prel.)':'');
+  const needers=c.modes.filter(x=>x.m==='need');
+  const info=[c.ds.length?(c.riders.length?'Skjuts: '+c.riders.map(kn).join(', '):'Ingen annan behöver skjuts'):needers.length?'Behöver skjuts: '+needers.map(kn).join(', '):'',
+    c.unk.length&&c.st!=='wait'?'Inte svarat: '+c.unk.map(x=>esc(childName(x.fid))).join(', '):''].filter(Boolean).join(' · ');
   return`<button class="trip st-${o?'ok':c.st==='prelim'?'maybe':c.st}" data-act="trip" data-sid="${s.id}" data-dir="${dir}"${past?' style="opacity:.75"':''}>
     <div class="th"><span>${dir==='to'?'→ Lämning':'← Hämtning'}</span><span>${t}</span></div>${body}
-    ${info&&!o?`<div class="need">${info}</div>`:''}${past&&!o&&isMod()?`<div class="need" style="color:var(--acc);font-weight:600">● Ej ifyllt i efterhand</div>`:''}<div class="kids">${kids}</div></button>`;
+    ${info&&!o?`<div class="need">${info}</div>`:''}<div class="kids">${kids}</div></button>`;
 }
 
 function viewChat(){
@@ -797,12 +805,14 @@ const SHEETS={
     const s=S.sess[sid];if(!s||!S.outDraft)return null;const D=S.outDraft;
     const fams=famList(true).filter(f=>!f.archived||D[f.id]?.role!=='absent');
     let h=`<h2>Hur blev det?</h2><p class="lead">${dir==='to'?'Lämning':'Hämtning'} ${fmtShort(s.date).toLowerCase()} · ${esc(s.title)}. Förifyllt från planen – rätta det som blev annorlunda.</p><div class="list">`;
+    const drvs=Object.entries(D).filter(([,v])=>v.role==='driver');
     for(const f of fams){const r=D[f.id]||{role:'absent'};const ps=activeParents(f.id);
       h+=`<div class="li" style="flex-wrap:wrap"><div class="av" style="background:${famColor(f.id)}">${esc((f.child||'?')[0])}</div><div class="grow t">${esc(f.child)}</div>
         <div style="width:100%">${segBtns(r.role,[['driver','Körde'],['rider','Åkte med'],['absent','Var inte med']],'outRole',`data-fid="${f.id}"`)}</div>
+        ${r.role==='rider'&&drvs.length>1?`<div class="row" style="margin-top:6px;gap:6px"><span class="hint">Åkte med:</span>${drvs.map(([dfid,dv])=>`<button type="button" class="btn sm ${r.with===dfid?'pri':'ghost'}" data-act="outWith" data-fid="${f.id}" data-d="${dfid}">${esc(dv.pid?parentName(dfid,dv.pid):childName(dfid))}</button>`).join('')}</div>`:''}
         ${r.role==='driver'&&ps.length>1?`<div class="row" style="margin-top:6px;gap:6px"><span class="hint">Vem körde:</span>${ps.map(p=>`<button type="button" class="btn sm ${p.id===r.pid?'pri':'ghost'}" data-act="outPid" data-fid="${f.id}" data-pid="${p.id}">${esc(p.name)}</button>`).join('')}</div>`:''}</div>`}
     h+=`</div><div class="sp"></div><div class="row between">${S.out[sid+'__'+dir]?`<button class="btn ghost" data-act="outDel" data-sid="${sid}" data-dir="${dir}">Ta bort utfallet</button>`:'<span></span>'}<button class="btn pri" data-act="outSave" data-sid="${sid}" data-dir="${dir}">Spara</button></div>
-      <p class="hint">Statistiken använder det ifyllda utfallet i stället för planen. Om ingen annan åkte med räknas resan inte som en körning.</p>`;
+      <p class="hint">Statistiken använder det ifyllda utfallet i stället för planen. En förare får en körning bara om minst ett annat barn åkte med just den föraren.</p>`;
     return h;
   },
   log(){
@@ -1135,14 +1145,16 @@ const ACT={
   howDriver(){sheet('howDriver')},
   outcome(d){const s=S.sess[d.sid];const o=S.out[d.sid+'__'+d.dir];const D={};
     for(const f of famList(true))D[f.id]={role:'absent',pid:null};
-    if(o){for(const x of o.drivers||[])D[x.fid]={role:'driver',pid:x.pid||driverPid(x.fid,s.date,s.id,d.dir)};for(const r of o.riders||[])if(D[r])D[r].role='rider'}
+    if(o){for(const x of o.drivers||[])D[x.fid]={role:'driver',pid:x.pid||driverPid(x.fid,s.date,s.id,d.dir)};for(const r of o.riders||[])if(D[r]){D[r].role='rider';D[r].with=(o.assign||{})[r]||null}}
     else{const c=coverage(s,d.dir);for(const x of c.ds)D[x.fid]={role:'driver',pid:x.pid};for(const x of c.riders)if(D[x.fid]&&D[x.fid].role!=='driver')D[x.fid].role='rider'}
     S.outDraft=D;sheet('outcome',{sid:d.sid,dir:d.dir})},
   outRole(d){const s=S.sess[S.sheet.args.sid];const r=S.outDraft[d.fid];r.role=d.m;if(d.m==='driver'&&!r.pid)r.pid=driverPid(d.fid,s.date,s.id,S.sheet.args.dir);renderSheet(false,true)},
   outPid(d){S.outDraft[d.fid].pid=d.pid;renderSheet(false,true)},
+  outWith(d){S.outDraft[d.fid].with=d.d;renderSheet(false,true)},
   async outSave(d){const D=S.outDraft;const drv=Object.entries(D).filter(([,v])=>v.role==='driver').map(([fid,v])=>({fid,pid:v.pid}));const rid=Object.entries(D).filter(([,v])=>v.role==='rider').map(([fid])=>fid);
     if(rid.length&&!drv.length){toast('Någon måste ha kört om någon åkte med');return}
-    if(await act('api_outcome_save',{p_session:d.sid,p_dir:d.dir,p_drivers:drv,p_riders:rid},'Utfallet är sparat'))sheet('trip',{sid:d.sid,dir:d.dir})},
+    const asg={};if(drv.length>1){for(const r of rid){const w=D[r].with;if(!w||!drv.some(x=>x.fid===w)){toast('Välj vem '+childName(r)+' åkte med');return}asg[r]=w}}
+    if(await act('api_outcome_save',{p_session:d.sid,p_dir:d.dir,p_drivers:drv,p_riders:rid,p_assign:drv.length>1?asg:null},'Utfallet är sparat'))sheet('trip',{sid:d.sid,dir:d.dir})},
   async outDel(d){if(!await ask('Ta bort det ifyllda utfallet? Statistiken går då tillbaka till planen.','Ta bort',true))return;if(await act('api_outcome_delete',{p_session:d.sid,p_dir:d.dir},'Borttaget'))sheet('trip',{sid:d.sid,dir:d.dir})},
   extra(){sheet('sessEdit',{kind:'extra'})},
   setPid(d){saveAnswer(d.sid,actingFid(),{[d.dir+'_pid']:d.pid})},
