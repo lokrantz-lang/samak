@@ -302,11 +302,14 @@ function saveTokens(a){lsSet('tokens',JSON.stringify(a))}
 function addToken(t,name){const a=tokens().filter(x=>x.t!==t);a.unshift({t,name:name||''});saveTokens(a);lsSet('cur',t)}
 function curToken(){const c=lsGet('cur');const a=tokens();return a.some(x=>x.t===c)?c:(a[0]?.t||null)}
 function readHashJoin(){const m=location.hash.match(/^#j=([a-z0-9]{12,40})$/i);if(m){lsSet('join',JSON.stringify({code:m[1].toLowerCase()}));try{history.replaceState(null,'',location.pathname+location.search)}catch{location.hash=''}}}
+function clearHash(){try{history.replaceState(null,'',location.pathname+location.search)}catch{}}
+function showTokenInUrl(){if(!S.token||S.badToken)return;const h='#t='+S.token;if(location.hash!==h)try{history.replaceState(null,'',location.pathname+location.search+h)}catch{}}
+function pasteBox(){return`<label class="f" style="margin-top:12px"><span>Klistra in din personliga länk</span><input type="text" id="pasteLink" placeholder="https://lokrantz-lang.github.io/samak/#t=…" autocomplete="off"></label><button class="btn pri" data-act="pasteLogin">Logga in</button>`}
 function joinState(){try{return JSON.parse(lsGet('join')||'null')}catch{return null}}
 function readHashToken(){const m=location.hash.match(/^#(?:t=)?([a-f0-9]{40,80})$/i);if(m){addToken(m[1].toLowerCase());try{history.replaceState(null,'',location.pathname+location.search)}catch{location.hash=''}}}
 
 /* ================= API (Supabase RPC) ================= */
-const APP_VERSION=11,APP_DATE='24 nov 2026',NEED_DB=11;
+const APP_VERSION=12,APP_DATE='24 nov 2026',NEED_DB=11;
 const Api={
   async call(fn,args){
     const r=await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`,{method:'POST',headers:{'apikey':SUPABASE_KEY,...(SUPABASE_KEY.startsWith('eyJ')?{'Authorization':'Bearer '+SUPABASE_KEY}:{}),'Content-Type':'application/json'},body:JSON.stringify(args||{})});
@@ -319,7 +322,7 @@ const ERR={not_passed:'Resan har inte passerat än.',riders_need_driver:'Någon 
 async function rpc(fn,args,{quiet}={}){
   try{const r=await Api.call(fn,{p_token:S.token,...args});return r}
   catch(e){
-    if(e.code==='invalid_token'){S.badToken=true;render()}
+    if(e.code==='invalid_token'){S.badToken=true;clearHash();render()}
     if(!quiet)toast(ERR[e.code]||('Kunde inte spara: '+e.message));
     throw e;
   }
@@ -345,6 +348,7 @@ async function refresh(force){
   }
 }
 function load(st){
+  setTimeout(showTokenInUrl,0);
   if(S.sheet?.kind==='trip')setTimeout(()=>S.sheet?.kind==='trip'&&loadTripLog(S.sheet.args.sid),0);
   S.me=st.me;S.group=st.group;
   S.fam=Object.fromEntries(st.families.map(f=>[f.id,f]));
@@ -514,7 +518,7 @@ function header(){
 function view(){
   if(SUPABASE_URL.startsWith('__'))return header()+`<div class="card box"><h3>Inte installerad än</h3><p class="s">Fyll i SUPABASE_URL och SUPABASE_KEY överst i filen.</p></div>`;
   if(S.join)return header()+viewJoin();
-  if(!S.token)return header()+`<div class="card hero"><h1>Alla åt samma håll.</h1><p class="hint" style="font-size:15px">Samåk planerar skjutsen till lagets träningar.</p></div><div class="card box"><h3>Du behöver en inbjudningslänk</h3><p class="s">Be lagets moderator om din personliga länk och öppna den på den här enheten.</p></div>`;
+  if(!S.token)return header()+`<div class="card hero"><h1>Alla åt samma håll.</h1><p class="hint" style="font-size:15px">Samåk planerar skjutsen till lagets träningar.</p></div><div class="card box"><h3>Öppna din personliga länk</h3><p class="s">Inloggningen sparas bara i den webbläsare där du öppnade din länk – till exempel inte om länken öppnas inne i WhatsApp eller från hemskärmen på iPhone. Öppna din personliga länk igen, den finns i meddelandet du fick. Har du tappat bort den? Be lagets moderator om en ny.</p>${pasteBox()}</div>`;
   if(S.badToken)return header()+`<div class="card box"><h3>Länken fungerar inte längre</h3><p class="s">Den kan ha spärrats eller bytts ut. Be moderatorn om en ny länk.</p>${tokens().length>1?'<div class="sp"></div><button class="btn ghost" data-act="groups">Välj en annan grupp</button>':''}<div class="sp"></div><button class="btn ghost" data-act="forget">Glöm länken på den här enheten</button></div>`;
   if(S.loading)return header()+`<div class="spin"></div><p class="empty">Hämtar…</p>`;
   if(!S.me)return header()+`<div class="banner bad"><div><b>Kan inte nå Samåk</b>Kontrollera nätet och försök igen.</div></div><button class="btn ghost" data-act="retry">Försök igen</button>`;
@@ -1060,6 +1064,7 @@ function viewJoin(){
   const ps=kid?kid.parents:[];
   const needName=sel.fid==='__new'||sel.pid==='__other'||(kid&&!ps.length);
   return`<div class="card hero"><h1>Välkommen till ${esc(j.info.group)}</h1><p class="hint" style="font-size:15px">Samåk planerar skjutsarna till lagets träningar. Välj ditt barn och dig själv, så godkänner moderatorn dig.</p></div>
+   <div class="banner info"><div class="grow"><b>Har du redan gått med?</b>Fyll inte i här igen – då blir det en ny ansökan. Öppna din personliga länk i stället, eller klistra in den nedan. Har du ingen, be moderatorn skicka en ny.<details style="margin-top:6px"><summary style="cursor:pointer">Klistra in min länk</summary>${pasteBox()}</details></div></div>
    <div class="card box" id="joinForm">
     <h4 style="margin-top:0">1. Ditt barn</h4>
     <div class="list">${j.info.children.map(c=>`<button class="btn ${sel.fid===c.id?'pri':'ghost'} block" style="margin-bottom:8px;justify-content:flex-start" data-act="joinPick" data-fid="${c.id}">${esc(c.child)}</button>`).join('')}
@@ -1075,7 +1080,7 @@ let joinT;
 async function pollJoin(){
   clearTimeout(joinT);const j=S.join;if(!j?.secret)return;
   try{const r=await Api.call('api_join_status',{p_secret:j.secret});
-    if(r.status==='approved'&&r.token){lsSet('join','');addToken(r.token,r.group);location.reload();return}
+    if(r.status==='approved'&&r.token){lsSet('join','');addToken(r.token,r.group);try{history.replaceState(null,'',location.pathname+location.search+'#t='+r.token)}catch{}location.reload();return}
     if(r.status==='rejected'){S.join={...j,status:'rejected'};lsSet('join','');render();return}
     if(r.status==='unknown'){S.join={...j,status:null,secret:null,error:true};lsSet('join','');render();return}
     if(r.status==='expired'){S.join={...j,status:'expired'};lsSet('join','');render();return}
@@ -1141,8 +1146,8 @@ const ACT={
   trip(d){sheet('trip',{sid:d.sid,dir:d.dir})},
   log(d){S.log={sid:d.sid||null,filter:d.sid?'s:'+d.sid:'',rows:null,loading:true};sheet('log');loadLog()},
   groups(){sheet('groups')},
-  switch(d){lsSet('cur',d.t);location.reload()},
-  async forget(){if(!await ask('Logga ut från den här enheten? Du behöver din länk för att komma in igen.','Logga ut',true))return;const a=tokens().filter(x=>x.t!==S.token);saveTokens(a);lsSet('cur',a[0]?.t||'');location.reload()},
+  switch(d){lsSet('cur',d.t);clearHash();location.reload()},
+  async forget(){if(!await ask('Logga ut från den här enheten? Du behöver din länk för att komma in igen.','Logga ut',true))return;const a=tokens().filter(x=>x.t!==S.token);saveTokens(a);lsSet('cur',a[0]?.t||'');clearHash();location.reload()},
   setAtt(d){saveAnswer(d.sid,actingFid(),{att:d.m})},
   async setMode(d){const fid=actingFid();
     if(drivers(d.sid,d.dir).some(x=>x.fid===fid)&&d.m!=='drive'){if(!await ask('Ni är fastställda som förare för den här resan. Ta bort er som förare?','Ta bort'))return;await act('api_driver_remove',{p_session:d.sid,p_dir:d.dir,p_family:fid})}
@@ -1229,6 +1234,9 @@ const ACT={
     catch(e){toast(ERR[e.code]||('Kunde inte skicka: '+e.message))}},
   joinCancel(){clearTimeout(joinT);lsSet('join','');S.join=null;try{history.replaceState(null,'',location.pathname+location.search)}catch{}location.reload()},
   myLink(){sheet('mylink')},
+  pasteLogin(){const v=($('#pasteLink')?.value||'').trim();const m=v.match(/[a-f0-9]{64}/i)||v.match(/(?:#t=|#)([a-f0-9]{40,80})/i);const t=m?(m[1]||m[0]).toLowerCase():null;
+    if(!t){toast('Hittar ingen personlig länk i texten. Den slutar med #t= och en lång kod.');return}
+    lsSet('join','');addToken(t);try{history.replaceState(null,'',location.pathname+location.search+'#t='+t)}catch{}location.reload()},
   async copyLink(d){try{await navigator.clipboard.writeText(linkUrl(d.t));toast('Länken är kopierad')}catch{const t=$('#linkText');t.focus();t.select();toast('Markerad – kopiera med Ctrl/⌘+C')}},
   async shareLink(d){try{await navigator.share({title:'Samåk',text:`Hej ${d.name}! Här är din personliga länk till Samåk – vi planerar skjutsar till träningarna där:`,url:linkUrl(d.t)})}catch{}},
   async role(d){if(await act('api_member_role',{p_member:d.mid,p_role:d.r},d.r==='moderator'?'Moderatorrättigheter givna':'Moderatorrättigheter borttagna'))closeSheet()},
@@ -1252,7 +1260,7 @@ const FORMS={
   async take(form,fd){const{sid,dir,fid}=form.dataset;const pid=fd.get('pid');if(!pid){toast('Välj vem som kör');return}
     if(await act('api_driver_set',{p_session:sid,p_dir:dir,p_family:fid,p_parent:pid,p_seats:Number(fd.get('seats'))||0},'Sparat'))sheet('trip',{sid,dir})},
   async rename(form,fd){if(await act('api_group_rename',{p_name:fd.get('name')}))closeSheet()},
-  async newGroup(form,fd){try{const t=await rpc('api_group_create',{p_name:fd.get('name'),p_child:fd.get('child'),p_parent:fd.get('parent')});addToken(t,fd.get('name'));location.reload()}catch{}},
+  async newGroup(form,fd){try{const t=await rpc('api_group_create',{p_name:fd.get('name'),p_child:fd.get('child'),p_parent:fd.get('parent')});addToken(t,fd.get('name'));clearHash();location.reload()}catch{}},
   async fam(form,fd){
     const fid=form.dataset.fid||null;const mod=isMod();
     const parents=[...form.querySelectorAll('[data-prow]')].map(r=>({id:r.dataset.prow||null,name:r.querySelector('.pname').value.trim(),address:r.querySelector('.paddr').value.trim()})).filter(p=>p.name);
