@@ -306,7 +306,7 @@ function joinState(){try{return JSON.parse(lsGet('join')||'null')}catch{return n
 function readHashToken(){const m=location.hash.match(/^#(?:t=)?([a-f0-9]{40,80})$/i);if(m){addToken(m[1].toLowerCase());try{history.replaceState(null,'',location.pathname+location.search)}catch{location.hash=''}}}
 
 /* ================= API (Supabase RPC) ================= */
-const APP_VERSION=10,APP_DATE='23 nov 2026',NEED_DB=9;
+const APP_VERSION=11,APP_DATE='24 nov 2026',NEED_DB=11;
 const Api={
   async call(fn,args){
     const r=await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`,{method:'POST',headers:{'apikey':SUPABASE_KEY,...(SUPABASE_KEY.startsWith('eyJ')?{'Authorization':'Bearer '+SUPABASE_KEY}:{}),'Content-Type':'application/json'},body:JSON.stringify(args||{})});
@@ -466,19 +466,27 @@ function weekSummary(){
     const d=pd(s.date);
     lines.push('',`${cap(DAYS[d.getDay()])} ${d.getDate()}/${d.getMonth()+1} · ${s.title}`);
     if(s.cancelled){lines.push('❌ Inställd');continue}
+    const along={to:new Set(),from:new Set()},drvF={to:new Set(),from:new Set()};let allOut=true;
     for(const dir of['to','from']){
-      const c=coverage(s,dir);const kids=c.riders.map(x=>childName(x.fid));
-      let t;
-      if(c.ds.length)t=`${c.ds.map(x=>parentName(x.fid,x.pid)).join(' + ')} kör${kids.length?' (med '+kids.join(', ')+')':''}${c.st==='short'?' ⚠️ för få platser':''}`;
-      else if(c.st==='open')t=`❗ förare saknas (${kids.join(', ')})`;
-      else if(c.unk.length)t=`inga svar från ${c.unk.map(x=>childName(x.fid)).join(', ')}`;
-      else t='ingen skjuts behövs';
-      if(c.prelim.length)t+=` – preliminärt: ${c.prelim.map(x=>childName(x.fid)).join(', ')}`;
+      const o=S.out[s.id+'__'+dir];let t;
+      if(o){const ds=o.drivers||[],rr=o.riders||[],A=o.assign||{};
+        for(const x of ds){along[dir].add(x.fid);drvF[dir].add(x.fid)}for(const r of rr)along[dir].add(r);
+        const nm=x=>parentName(x.fid,x.pid);
+        if(ds.length>1&&Object.keys(A).length)t=ds.map(x=>{const mine=rr.filter(r=>A[r]===x.fid).map(childName);return`${nm(x)} körde ✓ (${mine.length?'med '+mine.join(', '):'ingen annan med'})`}).join(' · ');
+        else t=ds.length?`${ds.map(nm).join(' + ')} körde ✓ (${rr.length?'med '+rr.map(childName).join(', '):'ingen annan med'})`:'ingen körde';
+      }else{allOut=false;
+        const c=coverage(s,dir);const kids=c.riders.map(x=>childName(x.fid));for(const x of c.ds)drvF[dir].add(x.fid);
+        if(c.ds.length)t=`${c.ds.map(x=>parentName(x.fid,x.pid)).join(' + ')} kör${kids.length?' (med '+kids.join(', ')+')':''}${c.st==='short'?' ⚠️ för få platser':''}`;
+        else if(c.st==='open')t=`❗ förare saknas (${kids.join(', ')})`;
+        else if(c.unk.length)t=`inga svar från ${c.unk.map(x=>childName(x.fid)).join(', ')}`;
+        else t='ingen skjuts behövs';
+        if(c.prelim.length)t+=` – preliminärt: ${c.prelim.map(x=>childName(x.fid)).join(', ')}`;
+      }
       lines.push(`${dir==='to'?'→ Lämning':'← Hämtning'}: ${t}`);
     }
-    const no=famList().filter(f=>mode(s.id,f.id,'to')==='no').map(f=>f.child);
+    const no=allOut?famList().filter(f=>!along.to.has(f.id)&&!along.from.has(f.id)).map(f=>f.child):famList().filter(f=>mode(s.id,f.id,'to')==='no').map(f=>f.child);
     if(no.length)lines.push(`Deltar ej: ${no.join(', ')}`);
-    for(const dir of['to','from'])for(const f of famList()){const a=effAnswer(s.id,f.id);const n=a&&a.att!=='no'&&a[dir+'_note'];if(n)lines.push(`💬 ${f.child} (${dir==='to'?'lämning':'hämtning'}): ${n}`)}
+    for(const dir of['to','from'])for(const f of famList()){if(!drvF[dir].has(f.id))continue;const a=effAnswer(s.id,f.id);const n=a&&a.att!=='no'&&a[dir+'_note'];if(n)lines.push(`💬 ${f.child} (${dir==='to'?'lämning':'hämtning'}): ${n}`)}
   }
   return lines.join('\n');
 }
