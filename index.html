@@ -306,7 +306,7 @@ function joinState(){try{return JSON.parse(lsGet('join')||'null')}catch{return n
 function readHashToken(){const m=location.hash.match(/^#(?:t=)?([a-f0-9]{40,80})$/i);if(m){addToken(m[1].toLowerCase());try{history.replaceState(null,'',location.pathname+location.search)}catch{location.hash=''}}}
 
 /* ================= API (Supabase RPC) ================= */
-const APP_VERSION=9,APP_DATE='20 nov 2026',NEED_DB=9;
+const APP_VERSION=10,APP_DATE='23 nov 2026',NEED_DB=9;
 const Api={
   async call(fn,args){
     const r=await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`,{method:'POST',headers:{'apikey':SUPABASE_KEY,...(SUPABASE_KEY.startsWith('eyJ')?{'Authorization':'Bearer '+SUPABASE_KEY}:{}),'Content-Type':'application/json'},body:JSON.stringify(args||{})});
@@ -356,7 +356,9 @@ function load(st){
   const a=tokens();const i=a.findIndex(x=>x.t===S.token);if(i>=0&&a[i].name!==S.group?.name){a[i].name=S.group?.name||'';saveTokens(a)}
   if(!S.weekChosen){S.weekChosen=true;chooseWeek()}
 }
-const isMod=()=>S.me?.role==='moderator';
+const realMod=()=>S.me?.role==='moderator';
+const asMember=()=>realMod()&&lsGet('asMember.'+S.me.member_id)==='1';
+const isMod=()=>realMod()&&!asMember();
 const famList=all=>Object.values(S.fam).filter(f=>all||!f.archived).sort((a,b)=>(a.child||'').localeCompare(b.child||'','sv'));
 const famName=fid=>{const f=S.fam[fid];return f?gen(f.child||'?')+' familj':'Borttagen familj'};
 const childName=fid=>S.fam[fid]?.child||'?';
@@ -523,7 +525,7 @@ function viewWeek(){
     if(c.prelim.length)prel++;if(c.ds.length&&!c.fixed)proposals++}
   const cur=monday(new Date());const diff=Math.round((w-cur)/(7*864e5));
   const rel=diff===0?'denna vecka':diff===1?'nästa vecka':diff===-1?'förra veckan':diff>1?`om ${diff} veckor`:`för ${-diff} veckor sedan`;
-  let h=`<div class="weekhead"><div><h1>Vecka ${isoWeek(w)}</h1><div class="sub">${range} · <b style="color:${diff===0?'var(--ok)':'var(--ink)'}">${rel}</b></div></div>
+  let h=`<div class="weekhead"><div><h1 style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">Vecka ${isoWeek(w)}${realMod()?`<button class="btn sm ${asMember()?'acc':'ghost'}" style="font-size:12.5px" data-act="viewAs">${asMember()?'↩ Tillbaka till moderator':'👁 Se som medlem'}</button>`:''}</h1><div class="sub">${range} · <b style="color:${diff===0?'var(--ok)':'var(--ink)'}">${rel}</b></div></div>
    <div class="wnav"><button data-act="wk" data-d="-1" aria-label="Föregående vecka">←</button>${diff!==0?`<button data-act="wk" data-d="0">Till vecka ${isoWeek(cur)}</button>`:''}<button data-act="wk" data-d="1" aria-label="Nästa vecka">→</button></div></div>`;
   const rs=n=>n===1?'resa':'resor',fams=n=>n===1?'1 familj':n+' familjer',unk=unkFam.size;
   if(total){
@@ -1143,6 +1145,7 @@ const ACT={
     toast(n?`Kopierade ${n} svar`:'Inga svar förra veckan att kopiera')},
   take(d){sheet('take',{sid:d.sid,dir:d.dir,fid:d.fid})},
   howDriver(){sheet('howDriver')},
+  viewAs(){const k='asMember.'+S.me.member_id;if(asMember())lsSet(k,'');else lsSet(k,'1');S.acting=null;closeSheet();render();toast(asMember()?'Du ser appen som en vanlig medlem':'Du ser appen som moderator igen')},
   outcome(d){const s=S.sess[d.sid];const o=S.out[d.sid+'__'+d.dir];const D={};
     for(const f of famList(true))D[f.id]={role:'absent',pid:null};
     if(o){for(const x of o.drivers||[])D[x.fid]={role:'driver',pid:x.pid||driverPid(x.fid,s.date,s.id,d.dir)};for(const r of o.riders||[])if(D[r]){D[r].role='rider';D[r].with=(o.assign||{})[r]||null}}
