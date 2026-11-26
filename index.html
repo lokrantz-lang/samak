@@ -309,7 +309,7 @@ function joinState(){try{return JSON.parse(lsGet('join')||'null')}catch{return n
 function readHashToken(){const m=location.hash.match(/^#(?:t=)?([a-f0-9]{40,80})$/i);if(m){addToken(m[1].toLowerCase());try{history.replaceState(null,'',location.pathname+location.search)}catch{location.hash=''}}}
 
 /* ================= API (Supabase RPC) ================= */
-const APP_VERSION=12,APP_DATE='24 nov 2026',NEED_DB=11;
+const APP_VERSION=13,APP_DATE='26 nov 2026',NEED_DB=11;
 const Api={
   async call(fn,args){
     const r=await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`,{method:'POST',headers:{'apikey':SUPABASE_KEY,...(SUPABASE_KEY.startsWith('eyJ')?{'Authorization':'Bearer '+SUPABASE_KEY}:{}),'Content-Type':'application/json'},body:JSON.stringify(args||{})});
@@ -330,7 +330,7 @@ async function rpc(fn,args,{quiet}={}){
 async function act(fn,args,okMsg){try{await rpc(fn,args);if(okMsg)toast(okMsg);await refresh(true);return true}catch{await refresh(true);return false}}
 
 /* ================= Tillstånd ================= */
-const S={dbVer:null,log:null,tripLog:{},out:{},outDraft:null,requests:[],join:null,token:null,raw:null,rawStr:'',loading:true,netErr:false,badToken:false,
+const S={tripFam:null,dbVer:null,log:null,tripLog:{},out:{},outDraft:null,requests:[],join:null,token:null,raw:null,rawStr:'',loading:true,netErr:false,badToken:false,
   me:null,group:null,fam:{},sess:{},ans:{},drv:{},msgs:[],members:[],
   view:'week',week:monday(new Date()),weekChosen:false,sheet:null,importRows:null,acting:null};
 async function refresh(force){
@@ -785,6 +785,13 @@ const SHEETS={
   trip({sid,dir}){
     const s=S.sess[sid];if(!s)return null;const c=coverage(s,dir);const locked=isLocked(sid);const past=tripTime(s,dir)<new Date();
     let h=`<h2>${dir==='to'?'Lämning':'Hämtning'} ${fmtShort(s.date).toLowerCase()}</h2><p class="lead">${esc(s.title)} · ${dir==='to'?`på plats före ${esc(dropTime(s))}`:`hämtas efter ${esc(s.end)}`} · ${esc(s.place)}</p>`;
+    const tf=isMod()&&S.tripFam&&S.fam[S.tripFam]?S.tripFam:S.me?.family_id;
+    if(tf&&S.fam[tf]&&!S.fam[tf].archived&&!past&&!s.cancelled&&canEditFam(tf)){const a=effAnswer(sid,tf);const att=a?(a.att==='no'?'no':'yes'):null;const m=mode(sid,tf,dir);
+      h+=`<div class="card box" id="tripAns" style="margin:0 0 14px;padding:12px 14px"><div class="row between" style="margin-bottom:8px"><b>${esc(childName(tf))}${tf!==S.me?.family_id?' <span class="hint" style="font-weight:400">– du svarar för familjen</span>':''}</b>${tf!==S.me?.family_id?`<button class="link" data-act="tripPick" data-fid="${S.me.family_id}">Mitt barn</button>`:''}</div>`;
+      if(locked)h+=`<p class="s" style="margin:0 0 8px">Resan är låst.</p><button class="btn sm ghost" data-act="unlock" data-sid="${sid}">🔓 Lås upp och ändra</button>`;
+      else{h+=segBtns(att,[['yes','Deltar'],['no','Deltar ej']],'tripAtt',`data-sid="${sid}" data-fid="${tf}"`);
+        if(att!=='no')h+=`<div class="hint" style="margin:8px 0 4px">${dir==='to'?'Lämning':'Hämtning'}</div>`+segBtns(m,[['drive','Kan köra'],['reserve','Om det krisar'],['need','Behöver skjuts']],'tripMode',`data-sid="${sid}" data-dir="${dir}" data-fid="${tf}"`)}
+      h+=`</div>`}
     const o=S.out[sid+'__'+dir];
     if(o)h+=`<div class="banner ok"><div class="grow"><b>Genomförd ✓</b>Körde: ${(o.drivers||[]).map(d=>esc(parentName(d.fid,d.pid))+' ('+esc(childName(d.fid))+')').join(', ')||'ingen'}${o.riders?.length?'<br>Åkte med: '+o.riders.map(r=>esc(childName(r))).join(', '):'<br>Ingen annan åkte med – räknas inte i statistiken.'}</div></div>`;
     if(past&&isMod())h+=`<button class="btn ${o?'ghost':'acc'} block" style="margin-bottom:12px" data-act="outcome" data-sid="${sid}" data-dir="${dir}">✏️ ${o?'Ändra hur det blev':'Fyll i hur det blev'}</button>`;
@@ -806,7 +813,7 @@ const SHEETS={
     for(const x of c.modes){
       const lab={driver:'Kör',auto:'Kör (förslag)',drive:'Kan köra',reserve:'Om det krisar',need:'Behöver skjuts',no:'Deltar ej',unk:'Har inte svarat'}[x.m]+(x.prelim?' (preliminärt)':'');
       const rides=c.riders.some(r=>r.fid===x.fid)||x.m==='unk';const adr=rides?addressFor(x.fid,s.date):'';const cu=custodian(x.fid,s.date);
-      h+=`<div class="li" style="flex-wrap:wrap"><span class="kid m-${x.m}${x.prelim?' m-maybe':''}"><i></i>${esc(childName(x.fid))}</span><span class="s grow">${lab}</span>
+      h+=`<div class="li" style="flex-wrap:wrap"><span class="kid m-${x.m}${x.prelim?' m-maybe':''}"><i></i>${esc(childName(x.fid))}</span><span class="s grow">${lab}</span>${isMod()&&!past&&!s.cancelled&&x.fid!==tf?`<button class="btn sm ghost" data-act="tripPick" data-fid="${x.fid}">Ändra</button>`:''}
         ${x.note?`<div class="addr">💬 ${esc(x.note)}</div>`:''}
         ${rides&&(adr||cu)?`<div class="addr">📍 ${dir==='to'?'Hämtas':'Lämnas'}: ${adr?esc(adr):'adress saknas'}${cu?' (hos '+esc(parentName(x.fid,cu))+')':''}</div>`:''}</div>`;
     }
@@ -1143,7 +1150,11 @@ const ACT={
   wk(d){const n=Number(d.d);S.week=n===0?monday(new Date()):addDays(S.week,7*n);render()},
   gotoweek(d){S.week=monday(pd(d.date));render();window.scrollTo(0,0)},
   fill(){S.acting=null;sheet('fill')},
-  trip(d){sheet('trip',{sid:d.sid,dir:d.dir})},
+  trip(d){S.tripFam=null;sheet('trip',{sid:d.sid,dir:d.dir})},
+  tripPick(d){S.tripFam=d.fid;renderSheet(false,true);const p=$('#sheet .panel');if(p)p.scrollTop=0},
+  tripAtt(d){saveAnswer(d.sid,d.fid,{att:d.m})},
+  async tripMode(d){if(drivers(d.sid,d.dir).some(x=>x.fid===d.fid)&&d.m!=='drive'){if(!await ask('Familjen är fastställd som förare för den här resan. Ta bort som förare?','Ta bort'))return;await act('api_driver_remove',{p_session:d.sid,p_dir:d.dir,p_family:d.fid})}
+    saveAnswer(d.sid,d.fid,{att:'yes',[d.dir]:d.m})},
   log(d){S.log={sid:d.sid||null,filter:d.sid?'s:'+d.sid:'',rows:null,loading:true};sheet('log');loadLog()},
   groups(){sheet('groups')},
   switch(d){lsSet('cur',d.t);clearHash();location.reload()},
